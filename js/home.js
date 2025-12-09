@@ -40,6 +40,13 @@ function setupEventListeners() {
   // File input change
   fileInput.addEventListener('change', handleFileSelect);
 
+  // Drag and drop on Open PDF buttons
+  [openPDFBtn, dockOpenPDFBtn].forEach(btn => {
+    btn.addEventListener('dragover', handleButtonDragOver);
+    btn.addEventListener('dragleave', handleButtonDragLeave);
+    btn.addEventListener('drop', handleButtonDrop);
+  });
+
   // Prevent default drag behavior on the whole page
   document.body.addEventListener('dragover', (e) => e.preventDefault());
   document.body.addEventListener('drop', (e) => e.preventDefault());
@@ -108,6 +115,39 @@ function handleFileSelect(e) {
 /* ==========================================
    FILE DROP HANDLING
    ========================================== */
+
+function handleButtonDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.style.transform = e.currentTarget.classList.contains('btn-primary') 
+    ? 'translateY(-3px) scale(1.05)' 
+    : 'translateY(-10px) scale(1.15)';
+  e.currentTarget.style.boxShadow = '0 16px 40px var(--accent-glow)';
+}
+
+function handleButtonDragLeave(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.style.transform = '';
+  e.currentTarget.style.boxShadow = '';
+}
+
+function handleButtonDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.style.transform = '';
+  e.currentTarget.style.boxShadow = '';
+
+  const files = e.dataTransfer.files;
+  if (files && files.length > 0) {
+    const file = files[0];
+    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+      openPDF(file);
+    } else {
+      alert('Please drop a PDF file.');
+    }
+  }
+}
 
 function handleFileDrop(e) {
   e.preventDefault();
