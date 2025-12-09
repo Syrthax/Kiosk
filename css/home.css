@@ -53,10 +53,10 @@
   backdrop-filter: blur(25px);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  padding: 0.6rem;
+  padding: 0.5rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   box-shadow: var(--glass-shadow-lg), 0 0 40px var(--accent-glow);
   transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform;
@@ -73,7 +73,7 @@
   flex-direction: column;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.6rem 0.5rem;
+  padding: 0.6rem;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   text-decoration: none;
