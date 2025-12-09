@@ -119,24 +119,44 @@ function handleFileSelect(e) {
 function handleButtonDragOver(e) {
   e.preventDefault();
   e.stopPropagation();
-  e.currentTarget.style.transform = e.currentTarget.classList.contains('btn-primary') 
-    ? 'translateY(-3px) scale(1.05)' 
-    : 'translateY(-10px) scale(1.15)';
-  e.currentTarget.style.boxShadow = '0 16px 40px var(--accent-glow)';
+  const btn = e.currentTarget;
+  
+  // Add drag-over class for animation
+  btn.classList.add('drag-over');
+  
+  // Apply transform based on button type
+  if (btn.classList.contains('btn-primary')) {
+    btn.style.transform = 'translateY(-5px) scale(1.08)';
+  } else if (btn.classList.contains('dock-item-primary')) {
+    btn.style.transform = 'translateY(-12px) scale(1.15)';
+  }
+  btn.style.boxShadow = '0 16px 40px var(--accent-glow)';
 }
 
 function handleButtonDragLeave(e) {
   e.preventDefault();
   e.stopPropagation();
-  e.currentTarget.style.transform = '';
-  e.currentTarget.style.boxShadow = '';
+  const btn = e.currentTarget;
+  
+  // Remove drag-over class
+  btn.classList.remove('drag-over');
+  
+  // Reset styles
+  btn.style.transform = '';
+  btn.style.boxShadow = '';
 }
 
 function handleButtonDrop(e) {
   e.preventDefault();
   e.stopPropagation();
-  e.currentTarget.style.transform = '';
-  e.currentTarget.style.boxShadow = '';
+  const btn = e.currentTarget;
+  
+  // Remove drag-over class
+  btn.classList.remove('drag-over');
+  
+  // Reset styles
+  btn.style.transform = '';
+  btn.style.boxShadow = '';
 
   const files = e.dataTransfer.files;
   if (files && files.length > 0) {

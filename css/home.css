@@ -123,6 +123,22 @@
   background: var(--accent-color);
   color: white;
   font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.dock-item-primary::before,
+.dock-item-primary.drag-over::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+
+.dock-item-primary.drag-over::after {
+  border: 2px dashed white;
+  animation: dropPulse 0.6s ease-in-out infinite;
 }
 
 .dock-item-primary:hover {
@@ -201,6 +217,14 @@
   justify-content: center;
   flex-wrap: wrap;
   animation: fadeInUp 0.6s ease-out 0.3s backwards;
+  margin-bottom: 1.5rem;
+}
+
+.hero-hint {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-style: italic;
+  animation: fadeInUp 0.6s ease-out 0.4s backwards;
 }
 
 .btn-primary,
@@ -216,6 +240,33 @@
   cursor: pointer;
   border: none;
   text-decoration: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before,
+.btn-primary.drag-over::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+
+.btn-primary.drag-over::after {
+  border: 2px dashed white;
+  animation: dropPulse 0.6s ease-in-out infinite;
+}
+
+@keyframes dropPulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .btn-primary {
