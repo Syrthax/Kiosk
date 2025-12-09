@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiosk – PDF Viewer</title>
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/viewer.css">
+</head>
+<body>
+  <!-- VIEWER PAGE CONTAINER -->
+  <div class="viewer-container">
+    
+    <!-- TOP NAVIGATION BAR -->
+    <nav class="top-nav">
+      
+      <!-- LEFT SECTION: LOGO & BRAND -->
+      <div class="brand-section">
+        <button class="icon-button home-button" id="home-button" title="Home" aria-label="Go to home">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+        </button>
+        <img src="assets/logo.svg" alt="Kiosk Logo" class="brand-logo">
+        <span class="brand-name">Kiosk</span>
+      </div>
+
+      <!-- CENTER SECTION: SEARCH BAR -->
+      <div class="search-container">
+        <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input 
+          type="search" 
+          class="search-bar" 
+          id="search-bar" 
+          placeholder="Search in PDF..."
+          autocomplete="off"
+        >
+        <div class="search-results-dropdown hidden" id="search-results">
+          <!-- Search results will be rendered here -->
+        </div>
+      </div>
+
+      <!-- RIGHT SECTION: PDF INFO & TOOLS -->
+      <div class="right-section">
+        <div class="pdf-info">
+          <div class="pdf-name ellipsis" id="pdf-name">Loading...</div>
+        </div>
+        
+        <div class="toolbar">
+        
+        <!-- View Tools -->
+        <div class="toolbar-group">
+          <button class="icon-button" id="zoom-out" title="Zoom out" aria-label="Zoom out">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="M21 21l-4.35-4.35M8 11h6"/>
+            </svg>
+          </button>
+          <span class="zoom-level" id="zoom-level">100%</span>
+          <button class="icon-button" id="zoom-in" title="Zoom in" aria-label="Zoom in">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <button class="icon-button" id="fit-width" title="Fit to width" aria-label="Fit to width">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path d="M3 12h18M3 12l4-4m-4 4l4 4m14-4l-4-4m4 4l-4 4"/>
+              <path d="M3 6h18M3 18h18" opacity="0.5"/>
+            </svg>
+          </button>
+          <button class="icon-button" id="fit-page" title="Fit to page" aria-label="Fit to page">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M9 3v18M15 3v18M3 9h18M3 15h18" opacity="0.4"/>
+            </svg>
+          </button>
+          <button class="icon-button" id="rotate" title="Rotate" aria-label="Rotate">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 11-9-9c2.52 0 4.77 1 6.36 2.64M21 3v6h-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- PDF Tools -->
+        <div class="toolbar-group">
+          <button class="icon-button" id="download" title="Download" aria-label="Download">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+      </div>
+    </nav>
+
+    <!-- MAIN VIEWING AREA -->
+    <main class="viewer-main">
+      
+      <!-- Optional: Thumbnails sidebar (can be toggled) -->
+      <aside class="thumbnails-sidebar hidden" id="thumbnails-sidebar">
+        <!-- Thumbnail items will be rendered here -->
+      </aside>
+
+      <!-- PDF Container -->
+      <div class="pdf-container" id="pdf-container">
+        <div class="pdf-loading" id="pdf-loading">
+          Loading PDF...
+        </div>
+        <div class="pdf-canvas-wrapper hidden" id="pdf-canvas-wrapper">
+          <!-- PDF pages will be rendered here -->
+        </div>
+        <div class="pdf-error hidden" id="pdf-error">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>Failed to load PDF</div>
+          <button class="btn btn-primary" onclick="window.location.href='index.html'">Go back home</button>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ANNOTATION / EDIT DOCK -->
+    <div class="annotation-dock" id="annotation-dock">
+      
+      <!-- Highlight -->
+      <button class="annotation-tool" id="tool-highlight" title="Highlight" data-tool="highlight">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path d="M9 4l-6 6 9 9 6-6-9-9zm0 0l3-3m4 11l3 3"/>
+          <path d="M12 12l-4 4" opacity="0.5"/>
+        </svg>
+      </button>
+
+      <!-- Underline -->
+      <button class="annotation-tool" id="tool-underline" title="Underline" data-tool="underline">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path d="M6 3v7a6 6 0 0012 0V3M4 21h16"/>
+        </svg>
+      </button>
+
+      <!-- Strikethrough -->
+      <button class="annotation-tool" id="tool-strikethrough" title="Strikethrough" data-tool="strikethrough">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path d="M16 4H9a3 3 0 00-3 3v0a3 3 0 003 3h6a3 3 0 013 3v0a3 3 0 01-3 3H8M4 12h16"/>
+        </svg>
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Pen / Draw -->
+      <button class="annotation-tool" id="tool-pen" title="Draw" data-tool="pen">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path d="M12 19l7-7 3 3-7 7-3-3zm0 0l-3 3m10-10L16 8l3-3 3 3-3 3z"/>
+        </svg>
+      </button>
+
+      <!-- Rectangle -->
+      <button class="annotation-tool" id="tool-rectangle" title="Rectangle" data-tool="rectangle">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <rect x="4" y="6" width="16" height="12" rx="2"/>
+        </svg>
+      </button>
+
+      <!-- Circle -->
+      <button class="annotation-tool" id="tool-circle" title="Circle" data-tool="circle">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="8"/>
+        </svg>
+      </button>
+
+      <!-- Arrow -->
+      <button class="annotation-tool" id="tool-arrow" title="Arrow" data-tool="arrow">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path d="M5 12h14m0 0l-6-6m6 6l-6 6"/>
+        </svg>
+      </button>
+
+      <!-- Text box -->
+      <button class="annotation-tool" id="tool-text" title="Text box" data-tool="text">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path d="M4 7h16M8 3h8M12 3v18m-5 0h10"/>
+        </svg>
+      </button>
+
+      <div class="toolbar-divider"></div>
+
+      <!-- Color picker -->
+      <div class="color-picker-wrapper">
+        <button class="color-picker-button" id="color-picker-button" style="background-color: #ffc107;" title="Color"></button>
+        <div class="color-picker hidden" id="color-picker">
+          <button class="color-option" style="background-color: #ffc107;" data-color="#ffc107"></button>
+          <button class="color-option" style="background-color: #ff5722;" data-color="#ff5722"></button>
+          <button class="color-option" style="background-color: #4caf50;" data-color="#4caf50"></button>
+          <button class="color-option" style="background-color: #2196f3;" data-color="#2196f3"></button>
+          <button class="color-option" style="background-color: #9c27b0;" data-color="#9c27b0"></button>
+          <button class="color-option" style="background-color: #000000;" data-color="#000000"></button>
+          <button class="color-option" style="background-color: #ffffff; border: 1px solid #ddd;" data-color="#ffffff"></button>
+          <button class="color-option" style="background-color: #f44336;" data-color="#f44336"></button>
+          <button class="color-option" style="background-color: #00bcd4;" data-color="#00bcd4"></button>
+          <button class="color-option" style="background-color: #ff9800;" data-color="#ff9800"></button>
+        </div>
+      </div>
+
+      <!-- Thickness slider -->
+      <div class="thickness-slider-wrapper">
+        <input 
+          type="range" 
+          class="thickness-slider" 
+          id="thickness-slider" 
+          min="1" 
+          max="10" 
+          value="3"
+          title="Thickness"
+        >
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- PDF.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- PDF-lib for exporting with annotations -->
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="js/viewer.js"></script>
+</body>
+</html>

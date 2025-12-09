@@ -1,0 +1,737 @@
+/* ==========================================
+   KIOSK – VIEWER PAGE STYLES
+   Styles specific to viewer.html (PDF reader)
+   ========================================== */
+
+.viewer-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ==========================================
+   TOP NAVIGATION BAR
+   ========================================== */
+
+.top-nav {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 0.75rem 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  align-items: center;
+  gap: 2rem;
+  box-shadow: var(--glass-shadow);
+  min-height: 64px;
+  position: relative;
+  z-index: 1000;
+}
+
+/* ==========================================
+   LEFT SECTION – BRAND
+   ========================================== */
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+/* ==========================================
+   RIGHT SECTION – PDF INFO & TOOLBAR
+   ========================================== */
+
+.right-section {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.pdf-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.home-button {
+  flex-shrink: 0;
+}
+
+.pdf-info > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.pdf-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.pdf-status {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* ==========================================
+   CENTER SECTION – SEARCH BAR
+   ========================================== */
+
+.search-container {
+  position: relative;
+  max-width: 500px;
+  margin: 0 auto;
+  width: 100%;
+  z-index: 10001;
+}
+
+.search-bar {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  padding-left: 2.5rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--glass-bg-dark);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition: all var(--transition);
+}
+
+.search-bar:focus {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px var(--accent-glow), 0 4px 15px rgba(0, 102, 255, 0.2);
+  transform: scale(1.02);
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-results-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-lg);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 10000;
+  animation: slideDown 0.3s ease-out;
+}
+
+.search-result-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background var(--transition);
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-item:hover {
+  background: var(--secondary-bg);
+}
+
+.search-result-page {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-color);
+  margin-bottom: 0.25rem;
+}
+
+.search-result-snippet {
+  font-size: 0.813rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.search-result-snippet mark {
+  background: rgba(255, 193, 7, 0.3);
+  color: var(--text-primary);
+  font-weight: 500;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.search-no-results {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* ==========================================
+   RIGHT SECTION – TOOLS & ACCOUNT
+   ========================================== */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color);
+  margin: 0 0.25rem;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.zoom-level {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  min-width: 50px;
+  text-align: center;
+}
+
+/* Account chip */
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--glass-bg-dark);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all var(--transition-bounce);
+  position: relative;
+  border: 1px solid var(--glass-border);
+}
+
+.account-chip:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.account-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.account-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.account-name {
+  font-size: 0.813rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.account-email {
+  font-size: 0.688rem;
+  color: var(--text-secondary);
+  line-height: 1;
+  margin-top: 2px;
+}
+
+/* Account dropdown */
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-lg);
+  min-width: 200px;
+  z-index: 1000;
+  overflow: hidden;
+  animation: slideDown 0.2s ease-out;
+}
+
+.account-dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background var(--transition);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border: none;
+  width: 100%;
+  text-align: left;
+  background: var(--primary-bg);
+}
+
+.account-dropdown-item:hover {
+  background: var(--secondary-bg);
+}
+
+/* ==========================================
+   MAIN PDF VIEWING AREA
+   ========================================== */
+
+.viewer-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: var(--tertiary-bg);
+}
+
+.pdf-container {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+  touch-action: pan-x pan-y;
+  scroll-behavior: smooth;
+}
+
+.pdf-canvas-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: center;
+  width: auto;
+  min-width: 100%;
+}
+
+.pdf-page {
+  background: white;
+  box-shadow: var(--glass-shadow-lg);
+  margin-bottom: 0;
+  position: relative;
+  overflow: visible;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.pdf-page canvas,
+.pdf-page .pdf-canvas {
+  display: block;
+  height: auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* Text layer for selection */
+.textLayer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 1;
+  line-height: 1.0;
+  pointer-events: auto;
+  z-index: 2;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 102, 255, 0.3);
+}
+
+.textLayer ::-moz-selection {
+  background: rgba(0, 102, 255, 0.3);
+}
+
+/* Annotation canvas */
+.annotation-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  transition: opacity var(--transition);
+  /* pointer-events controlled dynamically by JS based on active tool */
+}
+
+/* Loading state */
+.pdf-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.pdf-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 1rem;
+  color: var(--danger-color);
+}
+
+/* ==========================================
+   ANNOTATION / EDIT DOCK
+   ========================================== */
+
+.annotation-dock {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(25px);
+  backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow-lg), 0 0 40px var(--accent-glow);
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 100;
+  animation: slideUp 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  opacity: 1;
+}
+
+.annotation-dock.hidden {
+  transform: translateX(-50%) translateY(150%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.annotation-tool {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-bounce);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.annotation-tool:hover {
+  background: var(--glass-bg-dark);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--text-primary);
+  transform: scale(1.15) rotate(5deg);
+  border-color: var(--glass-border);
+}
+
+.annotation-tool.active {
+  background: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 20px var(--accent-glow);
+  transform: scale(1.1);
+  animation: toolActivate 0.3s ease-out;
+}
+
+.annotation-tool svg {
+  width: 18px;
+  height: 18px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Color picker */
+.color-picker-wrapper {
+  position: relative;
+}
+
+.color-picker-button {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--glass-border);
+  cursor: pointer;
+  transition: all var(--transition-bounce);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), inset 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.color-picker-button:hover {
+  transform: scale(1.15) rotate(-5deg);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25), inset 0 0 15px rgba(255, 255, 255, 0.5);
+}
+
+.color-picker {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-lg);
+  padding: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+  animation: slideUp 0.2s ease-out;
+}
+
+.color-option {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all var(--transition-bounce);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.color-option:hover,
+.color-option.selected {
+  transform: scale(1.3) rotate(10deg);
+  border-color: var(--text-primary);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Thickness slider */
+.thickness-slider-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+}
+
+.thickness-slider {
+  width: 80px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border-color);
+  border-radius: 2px;
+  outline: none;
+}
+
+.thickness-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent-color);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.thickness-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent-color);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+/* ==========================================
+   THUMBNAILS SIDEBAR (OPTIONAL)
+   ========================================== */
+
+.thumbnails-sidebar {
+  width: 200px;
+  background: var(--primary-bg);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.thumbnails-sidebar.hidden {
+  display: none;
+}
+
+.thumbnail-item {
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: all var(--transition);
+  background: white;
+}
+
+.thumbnail-item:hover {
+  border-color: var(--accent-color);
+  box-shadow: var(--shadow-md);
+}
+
+.thumbnail-item.active {
+  border-color: var(--accent-color);
+}
+
+.thumbnail-item img {
+  width: 100%;
+  display: block;
+}
+
+.thumbnail-page-number {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding: 0.25rem;
+  background: var(--secondary-bg);
+}
+
+/* ==========================================
+   RESPONSIVE DESIGN
+   ========================================== */
+
+@media (max-width: 1024px) {
+  .top-nav {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .search-container {
+    order: -1;
+  }
+
+  .toolbar {
+    justify-content: space-between;
+  }
+
+  .account-info {
+    display: none;
+  }
+
+  .annotation-dock {
+    bottom: 1rem;
+    padding: 0.5rem;
+    gap: 0.25rem;
+  }
+
+  .thickness-slider-wrapper {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .pdf-container {
+    padding: 1rem;
+  }
+
+  .thumbnails-sidebar {
+    width: 150px;
+  }
+
+  .toolbar-group .icon-button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .annotation-tool {
+    width: 32px;
+    height: 32px;
+  }
+
+  .annotation-tool svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* ==========================================
+   ANIMATIONS
+   ========================================== */
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toolActivate {
+  0% {
+    transform: scale(0.8);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1.1);
+  }
+}
