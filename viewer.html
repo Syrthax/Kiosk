@@ -240,16 +240,43 @@
       <div class="color-picker-wrapper">
         <button class="color-picker-button" id="color-picker-button" style="background-color: #ffc107;" title="Color"></button>
         <div class="color-picker hidden" id="color-picker">
-          <button class="color-option" style="background-color: #ffc107;" data-color="#ffc107"></button>
-          <button class="color-option" style="background-color: #ff5722;" data-color="#ff5722"></button>
-          <button class="color-option" style="background-color: #4caf50;" data-color="#4caf50"></button>
-          <button class="color-option" style="background-color: #2196f3;" data-color="#2196f3"></button>
-          <button class="color-option" style="background-color: #9c27b0;" data-color="#9c27b0"></button>
-          <button class="color-option" style="background-color: #000000;" data-color="#000000"></button>
-          <button class="color-option" style="background-color: #ffffff; border: 1px solid #ddd;" data-color="#ffffff"></button>
-          <button class="color-option" style="background-color: #f44336;" data-color="#f44336"></button>
-          <button class="color-option" style="background-color: #00bcd4;" data-color="#00bcd4"></button>
-          <button class="color-option" style="background-color: #ff9800;" data-color="#ff9800"></button>
+          <!-- Quick color presets -->
+          <div class="color-presets">
+            <button class="color-option" style="background-color: #ffc107;" data-color="#ffc107" title="Yellow"></button>
+            <button class="color-option" style="background-color: #ff5722;" data-color="#ff5722" title="Red-Orange"></button>
+            <button class="color-option" style="background-color: #f44336;" data-color="#f44336" title="Red"></button>
+            <button class="color-option" style="background-color: #e91e63;" data-color="#e91e63" title="Pink"></button>
+            <button class="color-option" style="background-color: #9c27b0;" data-color="#9c27b0" title="Purple"></button>
+            <button class="color-option" style="background-color: #673ab7;" data-color="#673ab7" title="Deep Purple"></button>
+            <button class="color-option" style="background-color: #3f51b5;" data-color="#3f51b5" title="Indigo"></button>
+            <button class="color-option" style="background-color: #2196f3;" data-color="#2196f3" title="Blue"></button>
+            <button class="color-option" style="background-color: #00bcd4;" data-color="#00bcd4" title="Cyan"></button>
+            <button class="color-option" style="background-color: #009688;" data-color="#009688" title="Teal"></button>
+            <button class="color-option" style="background-color: #4caf50;" data-color="#4caf50" title="Green"></button>
+            <button class="color-option" style="background-color: #8bc34a;" data-color="#8bc34a" title="Light Green"></button>
+            <button class="color-option" style="background-color: #cddc39;" data-color="#cddc39" title="Lime"></button>
+            <button class="color-option" style="background-color: #ffeb3b;" data-color="#ffeb3b" title="Yellow"></button>
+            <button class="color-option" style="background-color: #ff9800;" data-color="#ff9800" title="Orange"></button>
+            <button class="color-option" style="background-color: #ff5722;" data-color="#ff5722" title="Deep Orange"></button>
+            <button class="color-option" style="background-color: #795548;" data-color="#795548" title="Brown"></button>
+            <button class="color-option" style="background-color: #607d8b;" data-color="#607d8b" title="Blue Grey"></button>
+            <button class="color-option" style="background-color: #000000;" data-color="#000000" title="Black"></button>
+            <button class="color-option" style="background-color: #ffffff; border: 1px solid #ddd;" data-color="#ffffff" title="White"></button>
+          </div>
+          
+          <!-- Color spectrum canvas -->
+          <div class="color-spectrum-container">
+            <canvas id="color-spectrum" width="240" height="120"></canvas>
+            <div class="color-spectrum-slider">
+              <input type="range" id="hue-slider" min="0" max="360" value="45" class="hue-slider">
+            </div>
+          </div>
+          
+          <!-- Hex input -->
+          <div class="color-hex-input">
+            <label for="hex-input">#</label>
+            <input type="text" id="hex-input" placeholder="FFC107" maxlength="6" pattern="[0-9A-Fa-f]{6}">
+          </div>
         </div>
       </div>
 

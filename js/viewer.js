@@ -101,27 +101,8 @@ function setupEventListeners() {
   // Selection-based annotation
   document.addEventListener('mouseup', handleTextSelection);
   
-  // Color picker
-  const colorPickerButton = document.getElementById('color-picker-button');
-  const colorPicker = document.getElementById('color-picker');
-  colorPickerButton.addEventListener('click', (e) => {
-    e.stopPropagation();
-    colorPicker.classList.toggle('hidden');
-  });
-  
-  document.querySelectorAll('.color-option').forEach(option => {
-    option.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const color = option.dataset.color;
-      currentColor = color;
-      colorPickerButton.style.backgroundColor = color;
-      colorPicker.classList.add('hidden');
-    });
-  });
-  
-  document.addEventListener('click', () => {
-    colorPicker.classList.add('hidden');
-  });
+  // Color picker setup
+  setupColorPicker();
   
   // Thickness slider
   const thicknessSlider = document.getElementById('thickness-slider');
@@ -208,6 +189,150 @@ function handleSystemThemeChange(e) {
     const systemTheme = e.matches ? 'night' : 'light';
     document.body.setAttribute('data-system-theme', systemTheme);
   }
+}
+
+/* ==========================================
+   COLOR PICKER SETUP
+   ========================================== */
+
+function setupColorPicker() {
+  const colorPickerButton = document.getElementById('color-picker-button');
+  const colorPicker = document.getElementById('color-picker');
+  const colorSpectrum = document.getElementById('color-spectrum');
+  const hueSlider = document.getElementById('hue-slider');
+  const hexInput = document.getElementById('hex-input');
+  
+  let currentHue = 45; // Start with yellow hue
+  
+  // Toggle color picker
+  colorPickerButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    colorPicker.classList.toggle('hidden');
+    if (!colorPicker.classList.contains('hidden')) {
+      drawColorSpectrum(currentHue);
+    }
+  });
+  
+  // Close picker when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!colorPicker.contains(e.target) && e.target !== colorPickerButton) {
+      colorPicker.classList.add('hidden');
+    }
+  });
+  
+  // Prevent picker from closing when clicking inside it
+  colorPicker.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+  
+  // Preset color buttons
+  document.querySelectorAll('.color-option').forEach(option => {
+    option.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const color = option.dataset.color;
+      setColor(color);
+    });
+  });
+  
+  // Draw initial spectrum
+  drawColorSpectrum(currentHue);
+  
+  // Hue slider
+  hueSlider.addEventListener('input', (e) => {
+    currentHue = parseInt(e.target.value);
+    drawColorSpectrum(currentHue);
+  });
+  
+  // Color spectrum canvas click
+  colorSpectrum.addEventListener('click', (e) => {
+    const rect = colorSpectrum.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const color = getColorFromSpectrum(x, y, currentHue, colorSpectrum.width, colorSpectrum.height);
+    setColor(color);
+  });
+  
+  // Hex input
+  hexInput.addEventListener('input', (e) => {
+    let hex = e.target.value.replace(/[^0-9A-Fa-f]/g, '').substring(0, 6);
+    e.target.value = hex;
+    
+    if (hex.length === 6) {
+      setColor('#' + hex);
+    }
+  });
+  
+  hexInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && hexInput.value.length === 6) {
+      setColor('#' + hexInput.value);
+      colorPicker.classList.add('hidden');
+    }
+  });
+}
+
+function drawColorSpectrum(hue) {
+  const canvas = document.getElementById('color-spectrum');
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  // Draw saturation gradient (left to right: white to color)
+  for (let x = 0; x < width; x++) {
+    const saturation = (x / width) * 100;
+    
+    // Draw brightness gradient (top to bottom: color to black)
+    for (let y = 0; y < height; y++) {
+      const brightness = 100 - (y / height) * 100;
+      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${brightness}%)`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+}
+
+function getColorFromSpectrum(x, y, hue, width, height) {
+  const saturation = (x / width) * 100;
+  const brightness = 100 - (y / height) * 100;
+  return hslToHex(hue, saturation, brightness);
+}
+
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  
+  let r = 0, g = 0, b = 0;
+  
+  if (h >= 0 && h < 60) {
+    r = c; g = x; b = 0;
+  } else if (h >= 60 && h < 120) {
+    r = x; g = c; b = 0;
+  } else if (h >= 120 && h < 180) {
+    r = 0; g = c; b = x;
+  } else if (h >= 180 && h < 240) {
+    r = 0; g = x; b = c;
+  } else if (h >= 240 && h < 300) {
+    r = x; g = 0; b = c;
+  } else if (h >= 300 && h < 360) {
+    r = c; g = 0; b = x;
+  }
+  
+  r = Math.round((r + m) * 255);
+  g = Math.round((g + m) * 255);
+  b = Math.round((b + m) * 255);
+  
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function setColor(color) {
+  currentColor = color;
+  const colorPickerButton = document.getElementById('color-picker-button');
+  const hexInput = document.getElementById('hex-input');
+  
+  colorPickerButton.style.backgroundColor = color;
+  hexInput.value = color.replace('#', '').toUpperCase();
 }
 
 /* ==========================================
