@@ -334,11 +334,17 @@ async function renderAllPages() {
   const scrollPos = pdfContainer.scrollTop;
   const scrollPercentage = pdfContainer.scrollHeight > 0 ? scrollPos / pdfContainer.scrollHeight : 0;
   
+  // Save all annotation canvases before clearing
+  saveAllAnnotations();
+  
   pdfCanvasWrapper.innerHTML = '';
   
   for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
     await renderPage(pageNum);
   }
+  
+  // Restore annotations after re-rendering
+  restoreAllAnnotations();
   
   // Only restore scroll position if not zooming (zoom handles it separately)
   if (!isZooming && !zoomTimeout) {
@@ -634,8 +640,69 @@ function jumpToPage(pageNumber) {
 let isDrawing = false;
 let drawingStartX = 0;
 let drawingStartY = 0;
-let annotationHistory = new Map(); // Store annotations per page
+let annotationHistory = new Map(); // Store annotations per page as ImageData
 let previewCanvas = null; // For live shape preview
+
+function saveAllAnnotations() {
+  // Save all annotation canvases before they're destroyed
+  document.querySelectorAll('.annotation-canvas').forEach(canvas => {
+    const pageNum = parseInt(canvas.dataset.pageNumber);
+    const ctx = canvas.getContext('2d');
+    // Save the entire canvas as ImageData
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    annotationHistory.set(pageNum, {
+      imageData: imageData,
+      width: canvas.width,
+      height: canvas.height,
+      scale: currentScale
+    });
+  });
+}
+
+function restoreAllAnnotations() {
+  // Restore annotations to the new canvases after re-rendering
+  document.querySelectorAll('.annotation-canvas').forEach(canvas => {
+    const pageNum = parseInt(canvas.dataset.pageNumber);
+    const savedData = annotationHistory.get(pageNum);
+    
+    if (savedData && savedData.imageData) {
+      const ctx = canvas.getContext('2d');
+      
+      // If scale changed, we need to scale the annotations
+      const scaleRatio = currentScale / savedData.scale;
+      
+      if (Math.abs(scaleRatio - 1.0) < 0.01) {
+        // Same scale - direct restore
+        ctx.putImageData(savedData.imageData, 0, 0);
+      } else {
+        // Scale changed - need to scale the annotations
+        // Create temporary canvas with old size
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = savedData.width;
+        tempCanvas.height = savedData.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        // Put old data on temp canvas
+        tempCtx.putImageData(savedData.imageData, 0, 0);
+        
+        // Draw scaled version to actual canvas
+        ctx.save();
+        ctx.scale(scaleRatio, scaleRatio);
+        ctx.drawImage(tempCanvas, 0, 0);
+        ctx.restore();
+        
+        // Update saved data with new scale
+        const newImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        annotationHistory.set(pageNum, {
+          imageData: newImageData,
+          width: canvas.width,
+          height: canvas.height,
+          scale: currentScale
+        });
+      }
+    }
+  });
+}
 
 function setupAnnotationListeners(canvas) {
   canvas.addEventListener('mousedown', handleAnnotationStart);
