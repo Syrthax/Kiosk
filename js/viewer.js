@@ -703,8 +703,11 @@ function handleAnnotationStart(e) {
   
   isDrawing = true;
   const rect = e.target.getBoundingClientRect();
-  drawingStartX = e.clientX - rect.left;
-  drawingStartY = e.clientY - rect.top;
+  
+  // Account for CSS scale transform
+  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  drawingStartX = (e.clientX - rect.left) / scaleValue;
+  drawingStartY = (e.clientY - rect.top) / scaleValue;
   
   const ctx = e.target.getContext('2d');
   ctx.strokeStyle = currentColor;
@@ -728,8 +731,11 @@ function handleAnnotationMove(e) {
   if (!isDrawing || !currentTool) return;
   
   const rect = e.target.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
+  
+  // Account for CSS scale transform
+  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  const x = (e.clientX - rect.left) / scaleValue;
+  const y = (e.clientY - rect.top) / scaleValue;
   const ctx = e.target.getContext('2d');
   
   if (currentTool === 'pen') {
@@ -770,8 +776,11 @@ function handleAnnotationEnd(e) {
   if (!isDrawing || !currentTool) return;
   
   const rect = e.target.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
+  
+  // Account for CSS scale transform
+  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  const x = (e.clientX - rect.left) / scaleValue;
+  const y = (e.clientY - rect.top) / scaleValue;
   const ctx = e.target.getContext('2d');
   
   // Restore for final draw
@@ -934,6 +943,11 @@ function handleTextSelection(e) {
     if (!annotationCanvas) return;
     
     const ctx = annotationCanvas.getContext('2d');
+    
+    // Get the scale factor from the current zoom
+    const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+    
+    // Get canvas position in viewport (already includes scale transform)
     const canvasRect = annotationCanvas.getBoundingClientRect();
     
     ctx.strokeStyle = currentColor;
@@ -942,10 +956,12 @@ function handleTextSelection(e) {
     
     // Draw annotation on each selection rectangle
     Array.from(rects).forEach(rect => {
-      const x = rect.left - canvasRect.left;
-      const y = rect.top - canvasRect.top;
-      const width = rect.width;
-      const height = rect.height;
+      // Convert viewport coordinates to canvas coordinates
+      // Account for the scale transform by dividing by scaleValue
+      const x = (rect.left - canvasRect.left) / scaleValue;
+      const y = (rect.top - canvasRect.top) / scaleValue;
+      const width = rect.width / scaleValue;
+      const height = rect.height / scaleValue;
       
       if (currentTool === 'highlight') {
         ctx.globalAlpha = 0.35;
