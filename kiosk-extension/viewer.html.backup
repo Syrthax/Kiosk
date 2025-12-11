@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiosk – PDF Viewer</title>
+  <link rel="icon" type="image/png" href="icons/icon48.png">
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/viewer.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .viewer-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .toolbar {
+      background: #2a2a2a;
+      border-bottom: 1px solid #3a3a3a;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .toolbar-left,
+    .toolbar-center,
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toolbar-center {
+      flex: 1;
+      justify-content: center;
+    }
+
+    .btn {
+      background: #3a3a3a;
+      border: 1px solid #4a4a4a;
+      color: #e0e0e0;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover {
+      background: #4a4a4a;
+      border-color: #5a5a5a;
+    }
+
+    .btn-primary {
+      background: #2196F3;
+      border-color: #1976D2;
+    }
+
+    .btn-primary:hover {
+      background: #1976D2;
+    }
+
+    .page-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #b0b0b0;
+      font-size: 14px;
+    }
+
+    .page-input {
+      width: 60px;
+      text-align: center;
+      background: #3a3a3a;
+      border: 1px solid #4a4a4a;
+      color: #e0e0e0;
+      padding: 6px;
+      border-radius: 4px;
+    }
+
+    .zoom-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #zoom-level {
+      min-width: 60px;
+      text-align: center;
+    }
+
+    .canvas-container {
+      flex: 1;
+      overflow: auto;
+      background: #1a1a1a;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #pdf-canvas {
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .drop-zone {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(33, 150, 243, 0.1);
+      border: 3px dashed #2196F3;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .drop-zone.active {
+      display: flex;
+    }
+
+    .drop-zone-content {
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .drop-zone-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+
+    .drop-zone-text {
+      font-size: 24px;
+      font-weight: 600;
+      color: #2196F3;
+    }
+
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      color: #b0b0b0;
+    }
+
+    .error {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: #f44336;
+    }
+
+    .error-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+  </style>
+  <script src="lib/pdf.min.js"></script>
+</head>
+<body>
+  <div class="viewer-container">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <button class="btn btn-primary" id="open-file-btn">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Open PDF
+        </button>
+        <button class="btn" id="save-btn" disabled>
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+          </svg>
+          Save
+        </button>
+      </div>
+
+      <div class="toolbar-center">
+        <div class="page-info">
+          <button class="btn" id="prev-page-btn" disabled>
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <input type="number" class="page-input" id="page-num" min="1" value="1" disabled>
+          <span>/ <span id="page-count">0</span></span>
+          <button class="btn" id="next-page-btn" disabled>
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <div class="zoom-controls">
+          <button class="btn" id="zoom-out-btn" disabled>
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+            </svg>
+          </button>
+          <span id="zoom-level">100%</span>
+          <button class="btn" id="zoom-in-btn" disabled>
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canvas Container -->
+    <div class="canvas-container" id="canvas-container">
+      <canvas id="pdf-canvas"></canvas>
+      <div class="loading" id="loading">Select a PDF file to begin</div>
+    </div>
+
+    <!-- Drop Zone -->
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-zone-content">
+        <div class="drop-zone-icon">📄</div>
+        <div class="drop-zone-text">Drop PDF file here</div>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="file-input" accept="application/pdf">
+
+  <script>
+    // PDF.js setup
+    pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/pdf.worker.min.js');
+
+    // State
+    let pdfDoc = null;
+    let pageNum = 1;
+    let pageRendering = false;
+    let pageNumPending = null;
+    let scale = 1.5;
+    let currentFileHandle = null;
+    let currentFileName = '';
+
+    // Elements
+    const canvas = document.getElementById('pdf-canvas');
+    const ctx = canvas.getContext('2d');
+    const pageNumInput = document.getElementById('page-num');
+    const pageCount = document.getElementById('page-count');
+    const prevBtn = document.getElementById('prev-page-btn');
+    const nextBtn = document.getElementById('next-page-btn');
+    const zoomInBtn = document.getElementById('zoom-in-btn');
+    const zoomOutBtn = document.getElementById('zoom-out-btn');
+    const zoomLevel = document.getElementById('zoom-level');
+    const openFileBtn = document.getElementById('open-file-btn');
+    const saveBtn = document.getElementById('save-btn');
+    const fileInput = document.getElementById('file-input');
+    const loading = document.getElementById('loading');
+    const dropZone = document.getElementById('drop-zone');
+    const canvasContainer = document.getElementById('canvas-container');
+
+    // Render page
+    function renderPage(num) {
+      pageRendering = true;
+      loading.textContent = 'Rendering page...';
+      loading.style.display = 'block';
+
+      pdfDoc.getPage(num).then(page => {
+        const viewport = page.getViewport({ scale });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+          canvasContext: ctx,
+          viewport: viewport
+        };
+
+        const renderTask = page.render(renderContext);
+        renderTask.promise.then(() => {
+          pageRendering = false;
+          loading.style.display = 'none';
+          if (pageNumPending !== null) {
+            renderPage(pageNumPending);
+            pageNumPending = null;
+          }
+        });
+      });
+
+      pageNumInput.value = num;
+    }
+
+    function queueRenderPage(num) {
+      if (pageRendering) {
+        pageNumPending = num;
+      } else {
+        renderPage(num);
+      }
+    }
+
+    function onPrevPage() {
+      if (pageNum <= 1) return;
+      pageNum--;
+      queueRenderPage(pageNum);
+    }
+
+    function onNextPage() {
+      if (pageNum >= pdfDoc.numPages) return;
+      pageNum++;
+      queueRenderPage(pageNum);
+    }
+
+    function updateZoom(newScale) {
+      scale = newScale;
+      zoomLevel.textContent = Math.round(scale * 100) + '%';
+      queueRenderPage(pageNum);
+    }
+
+    async function loadPDF(file) {
+      try {
+        loading.textContent = 'Loading PDF...';
+        loading.style.display = 'block';
+
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        
+        pdfDoc = await loadingTask.promise;
+        pageCount.textContent = pdfDoc.numPages;
+        currentFileName = file.name;
+        
+        // Enable controls
+        prevBtn.disabled = false;
+        nextBtn.disabled = false;
+        zoomInBtn.disabled = false;
+        zoomOutBtn.disabled = false;
+        pageNumInput.disabled = false;
+        saveBtn.disabled = false;
+
+        // Render first page
+        pageNum = 1;
+        renderPage(pageNum);
+      } catch (error) {
+        console.error('Error loading PDF:', error);
+        loading.innerHTML = '<div class="error"><div class="error-icon">⚠️</div><div>Failed to load PDF</div></div>';
+      }
+    }
+
+    // Event Listeners
+    openFileBtn.addEventListener('click', () => {
+      if ('showOpenFilePicker' in window) {
+        window.showOpenFilePicker({
+          types: [{
+            description: 'PDF files',
+            accept: { 'application/pdf': ['.pdf'] }
+          }],
+          multiple: false
+        }).then(([fileHandle]) => {
+          currentFileHandle = fileHandle;
+          return fileHandle.getFile();
+        }).then(loadPDF).catch(err => {
+          if (err.name !== 'AbortError') console.error(err);
+        });
+      } else {
+        fileInput.click();
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file && file.type === 'application/pdf') {
+        loadPDF(file);
+      }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      if (!pdfDoc) return;
+
+      try {
+        if ('showSaveFilePicker' in window) {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: currentFileName || 'document.pdf',
+            types: [{
+              description: 'PDF files',
+              accept: { 'application/pdf': ['.pdf'] }
+            }]
+          });
+
+          const writable = await handle.createWritable();
+          const blob = await fetch(canvas.toDataURL()).then(r => r.blob());
+          await writable.write(blob);
+          await writable.close();
+        } else {
+          // Fallback download
+          const link = document.createElement('a');
+          link.download = currentFileName || 'document.pdf';
+          link.href = canvas.toDataURL();
+          link.click();
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') console.error(err);
+      }
+    });
+
+    prevBtn.addEventListener('click', onPrevPage);
+    nextBtn.addEventListener('click', onNextPage);
+    zoomInBtn.addEventListener('click', () => updateZoom(scale + 0.25));
+    zoomOutBtn.addEventListener('click', () => updateZoom(Math.max(0.5, scale - 0.25)));
+
+    pageNumInput.addEventListener('change', (e) => {
+      let num = parseInt(e.target.value);
+      if (num > 0 && num <= pdfDoc.numPages) {
+        pageNum = num;
+        queueRenderPage(pageNum);
+      } else {
+        e.target.value = pageNum;
+      }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 's') {
+          e.preventDefault();
+          saveBtn.click();
+        } else if (e.key === 'o') {
+          e.preventDefault();
+          openFileBtn.click();
+        }
+      } else if (e.key === 'ArrowLeft') {
+        onPrevPage();
+      } else if (e.key === 'ArrowRight') {
+        onNextPage();
+      }
+    });
+
+    // Drag and drop
+    canvasContainer.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('active');
+    });
+
+    canvasContainer.addEventListener('dragleave', (e) => {
+      if (e.target === canvasContainer) {
+        dropZone.classList.remove('active');
+      }
+    });
+
+    canvasContainer.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('active');
+      
+      const file = e.dataTransfer.files[0];
+      if (file && file.type === 'application/pdf') {
+        loadPDF(file);
+      }
+    });
+
+    // Check for temp PDF in storage (from popup)
+    chrome.storage.local.get(['tempPDF', 'tempPDFName'], (result) => {
+      if (result.tempPDF) {
+        const uint8Array = new Uint8Array(result.tempPDF);
+        const blob = new Blob([uint8Array], { type: 'application/pdf' });
+        const file = new File([blob], result.tempPDFName || 'document.pdf', { type: 'application/pdf' });
+        
+        // Clear temp storage
+        chrome.storage.local.remove(['tempPDF', 'tempPDFName']);
+        
+        // Load the PDF
+        loadPDF(file);
+      }
+    });
+  </script>
+</body>
+</html>

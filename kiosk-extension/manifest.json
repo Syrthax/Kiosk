@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Kiosk PDF Extension",
+  "version": "1.0.0",
+  "description": "Enhanced PDF annotation with local file saving, history tracking, and keyboard shortcuts for Kiosk",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Kiosk PDF Viewer"
+  },
+  "background": {
+    "service_worker": "src/background/background.js"
+  },
+  "permissions": ["storage"],
+  "commands": {
+    "open-viewer": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Open Kiosk PDF Viewer"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer.html", "lib/pdf.worker.min.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiosk Extension</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Onboarding Modal (shown on first install) -->
+  <div id="onboarding-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Welcome to Kiosk Extension! 🎉</h2>
+      <p>Enhance your PDF workflow with powerful local features:</p>
+      <ul>
+        <li>💾 Save files locally with <kbd>Ctrl+S</kbd> / <kbd>Cmd+S</kbd></li>
+        <li>📚 Track annotation history automatically</li>
+        <li>📁 Choose a default save folder</li>
+        <li>🔒 Everything stays private on your device</li>
+      </ul>
+      
+      <div class="onboarding-section">
+        <h3>Local File Access</h3>
+        <p>When you save files, your browser will prompt for permission. This is secure and gives you full control.</p>
+        <button id="enable-file-access" class="btn btn-primary">Got it, I'll grant access when needed</button>
+      </div>
+      
+      <div class="onboarding-section">
+        <h3>Set Browser as Default PDF Handler (Optional)</h3>
+        <p>Want PDFs to open in your browser automatically? You can configure this in browser settings.</p>
+        <button id="open-settings" class="btn btn-secondary">Open Browser Settings</button>
+        <details class="help-text">
+          <summary>Show manual steps</summary>
+          <ol>
+            <li>Go to <strong>chrome://settings/content/pdfDocuments</strong></li>
+            <li>Enable "Open PDFs in Chrome"</li>
+            <li>Or set Chrome as your system's default PDF application</li>
+          </ol>
+        </details>
+      </div>
+      
+      <div class="onboarding-actions">
+        <button id="skip-onboarding" class="btn btn-ghost">Skip for now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Popup -->
+  <div id="main-popup" class="hidden">
+    <header class="popup-header">
+      <div class="header-content">
+        <img src="../../icons/icon48.png" alt="Kiosk" class="logo">
+        <h1>Kiosk</h1>
+      </div>
+      <button id="settings-btn" class="icon-btn" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Drop Zone -->
+    <div id="drop-zone" class="drop-zone">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+      </svg>
+      <p>Drop PDF here or <button id="file-picker-btn" class="link-btn">browse</button></p>
+      <input type="file" id="file-picker" accept=".pdf,application/pdf" hidden>
+    </div>
+
+    <!-- Recent Files -->
+    <section class="recent-files">
+      <div class="section-header">
+        <h2>Recent Files</h2>
+        <button id="clear-history-btn" class="btn-small">Clear</button>
+      </div>
+      <div id="history-list" class="history-list">
+        <!-- History items will be dynamically inserted -->
+      </div>
+      <div id="empty-state" class="empty-state">
+        <p>No recent files yet</p>
+        <p class="muted">Open a PDF to get started</p>
+      </div>
+    </section>
+
+    <!-- Quick Actions -->
+    <footer class="popup-footer">
+      <button id="choose-folder-btn" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"></path>
+        </svg>
+        Choose Save Folder
+      </button>
+      <div id="autosave-toggle" class="toggle-group">
+        <label class="toggle">
+          <input type="checkbox" id="autosave-checkbox" checked aria-label="Enable autosave">
+          <span class="toggle-slider"></span>
+        </label>
+        <span>Autosave</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settings-panel" class="panel hidden">
+    <header class="panel-header">
+      <button id="back-btn" class="icon-btn" aria-label="Back to main menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5m7 7l-7-7 7-7"></path>
+        </svg>
+      </button>
+      <h2>Settings</h2>
+    </header>
+    
+    <div class="settings-content">
+      <div class="setting-item">
+        <h3>Default Save Location</h3>
+        <p id="current-folder" class="muted">Not set</p>
+        <button id="change-folder-btn" class="btn btn-secondary">Change Folder</button>
+      </div>
+      
+      <div class="setting-item">
+        <h3>Autosave Interval</h3>
+        <select id="autosave-interval" aria-label="Autosave interval">
+          <option value="5000">Every 5 seconds</option>
+          <option value="10000">Every 10 seconds</option>
+          <option value="30000">Every 30 seconds</option>
+          <option value="60000">Every 1 minute</option>
+        </select>
+      </div>
+      
+      <div class="setting-item">
+        <h3>Theme</h3>
+        <select id="theme-select" aria-label="Theme selection">
+          <option value="auto">Auto (Match system)</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="night">Night</option>
+        </select>
+      </div>
+      
+      <div class="setting-item">
+        <h3>Storage</h3>
+        <p id="storage-info" class="muted">Calculating...</p>
+        <button id="clear-all-data-btn" class="btn btn-danger">Clear All Data</button>
+      </div>
+      
+      <div class="setting-item">
+        <h3>About</h3>
+        <p class="muted">Version 1.0.0</p>
+        <p class="muted">All files and annotations stay on your device. Nothing is uploaded.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

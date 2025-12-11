@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiosk PDF Viewer</title>
+  <link rel="stylesheet" href="src/popup/popup.css">
+</head>
+<body>
+  <!-- POPUP CONTAINER -->
+  <div class="popup-container">
+    
+    <!-- MINIMAL HEADER -->
+    <header class="popup-header">
+      <div class="logo-section">
+        <div class="logo-icon">📄</div>
+        <span class="logo-text">Kiosk</span>
+      </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="popup-content">
+      
+      <!-- HERO SECTION -->
+      <section class="hero-section">
+        <h1 class="hero-title">Annotate PDFs</h1>
+        <p class="hero-description">
+          Open and annotate PDFs with powerful tools
+        </p>
+        <div class="hero-actions">
+          <button class="btn-primary" id="open-pdf-btn">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            Open PDF
+          </button>
+        </div>
+        <p class="hero-hint">💡 Drag & drop PDFs on the button</p>
+      </section>
+
+      <!-- Hidden file input -->
+      <input type="file" id="file-input" accept=".pdf,application/pdf" aria-label="Select PDF file">
+
+      <!-- RECENT FILES SECTION -->
+      <section class="recent-section" id="recent-section">
+        <h3 class="recent-title">Recent Files</h3>
+        <div class="recent-list" id="recent-list">
+          <!-- Recent files will be populated here -->
+        </div>
+      </section>
+
+      <!-- FOOTER -->
+      <footer class="popup-footer">
+        <p class="footer-text">Press <kbd>Ctrl+Shift+P</kbd> for quick access</p>
+      </footer>
+
+    </main>
+
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">Opening PDF...</div>
+  </div>
+
+  <script src="src/popup/popup-main.js"></script>
+</body>
+</html>
