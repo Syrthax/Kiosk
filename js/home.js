@@ -8,6 +8,7 @@ const fileInput = document.getElementById('file-input');
 const openPDFBtn = document.getElementById('open-pdf-btn');
 const dockOpenPDFBtn = document.getElementById('dock-open-pdf');
 const floatingDock = document.getElementById('floating-dock');
+const themeToggle = document.getElementById('theme-toggle');
 
 // Scroll tracking for floating dock auto-hide
 let lastScrollY = window.scrollY;
@@ -54,8 +55,9 @@ function setupEventListeners() {
   
   // File drop on the entire page
   document.body.addEventListener('drop', handleFileDrop);
-  
-  // Smooth scroll for anchor links
+    // Theme Toggle
+  themeToggle.addEventListener('click', toggleTheme);
+    // Smooth scroll for anchor links
   document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', function (e) {
       e.preventDefault();
@@ -253,33 +255,49 @@ function arrayBufferToBase64(buffer) {
    THEME MANAGEMENT
    ========================================== */
 
+function toggleTheme() {
+  const currentTheme = localStorage.getItem('kiosk_theme') || 'light';
+  let newTheme;
+  
+  // Cycle through: light -> night -> light
+  if (currentTheme === 'light') {
+    newTheme = 'night';
+  } else {
+    newTheme = 'light';
+  }
+  
+  localStorage.setItem('kiosk_theme', newTheme);
+  applyTheme(newTheme);
+}
+
+function applyTheme(theme) {
+  const body = document.body;
+  
+  // Remove all theme classes
+  body.removeAttribute('data-theme');
+  body.removeAttribute('data-system-theme');
+  
+  if (theme === 'auto') {
+    // Auto mode: detect system preference
+    const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+    body.setAttribute('data-theme', 'auto');
+    const systemTheme = systemThemeMedia.matches ? 'night' : 'light';
+    body.setAttribute('data-system-theme', systemTheme);
+  } else {
+    // Manual theme selection
+    body.setAttribute('data-theme', theme);
+  }
+}
+
 function setupTheme() {
   // Load saved theme or default to 'light'
   const savedTheme = localStorage.getItem('kiosk_theme') || 'light';
   
-  // Setup system theme detection for auto mode
-  const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
-  
-  function applyTheme(theme) {
-    const body = document.body;
-    
-    // Remove all theme classes
-    body.removeAttribute('data-theme');
-    body.removeAttribute('data-system-theme');
-    
-    if (theme === 'auto') {
-      // Auto mode: detect system preference
-      body.setAttribute('data-theme', 'auto');
-      const systemTheme = systemThemeMedia.matches ? 'night' : 'light';
-      body.setAttribute('data-system-theme', systemTheme);
-    } else {
-      // Manual theme selection
-      body.setAttribute('data-theme', theme);
-    }
-  }
-  
   // Apply initial theme
   applyTheme(savedTheme);
+  
+  // Setup system theme detection for auto mode
+  const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
   
   // Listen for system theme changes if in auto mode
   systemThemeMedia.addEventListener('change', (e) => {

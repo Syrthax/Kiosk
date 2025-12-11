@@ -412,6 +412,41 @@
   animation: dockBounce 2s ease-in-out infinite;
 }
 
+/* Theme Toggle Styles */
+#theme-toggle {
+  position: relative;
+}
+
+.theme-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.sun-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+
+.moon-icon {
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+
+[data-theme="night"] .sun-icon,
+[data-system-theme="night"] .sun-icon {
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(-180deg);
+}
+
+[data-theme="night"] .moon-icon,
+[data-system-theme="night"] .moon-icon {
+  opacity: 1;
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+
 .demo-tool {
   width: 36px;
   height: 36px;
