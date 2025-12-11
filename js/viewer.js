@@ -824,9 +824,15 @@ function handleToolSelect(tool) {
       }
     });
     
-    // Text layer should ALWAYS allow text selection, regardless of tool
+    // Text layer should only allow text selection for text-based tools
     document.querySelectorAll('.textLayer').forEach(layer => {
-      layer.style.pointerEvents = 'auto';
+      if (isTextTool) {
+        // Enable text selection for highlight/underline/strikethrough
+        layer.style.pointerEvents = 'auto';
+      } else {
+        // Disable text selection for drawing tools (rectangle, circle, pen, etc.)
+        layer.style.pointerEvents = 'none';
+      }
     });
   } else {
     // Reset cursor and allow text selection
