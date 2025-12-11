@@ -40,6 +40,7 @@ function init() {
   setupDockAutoHide();
   setupCloseWarning();
   setupTheme();
+  setupTooltips();
   loadPDFFromURL();
 }
 
@@ -333,6 +334,84 @@ function setColor(color) {
   
   colorPickerButton.style.backgroundColor = color;
   hexInput.value = color.replace('#', '').toUpperCase();
+}
+
+/* ==========================================
+   CUSTOM TOOLTIPS
+   ========================================== */
+
+function setupTooltips() {
+  const tooltip = document.getElementById('custom-tooltip');
+  const tooltipTitle = tooltip.querySelector('.tooltip-title');
+  const tooltipDescription = tooltip.querySelector('.tooltip-description');
+  
+  let tooltipTimeout = null;
+  let currentTarget = null;
+  
+  // Find all elements with tooltip data
+  const tooltipElements = document.querySelectorAll('[data-tooltip-title]');
+  
+  tooltipElements.forEach(element => {
+    element.addEventListener('mouseenter', (e) => {
+      currentTarget = e.currentTarget;
+      
+      // Clear any existing timeout
+      clearTimeout(tooltipTimeout);
+      
+      // Wait a moment before showing tooltip
+      tooltipTimeout = setTimeout(() => {
+        const title = currentTarget.dataset.tooltipTitle;
+        const description = currentTarget.dataset.tooltipDesc;
+        
+        if (title) {
+          tooltipTitle.textContent = title;
+          tooltipDescription.textContent = description || '';
+          tooltip.classList.remove('hidden');
+          updateTooltipPosition(e);
+        }
+      }, 500); // 500ms delay before showing
+    });
+    
+    element.addEventListener('mousemove', (e) => {
+      if (!tooltip.classList.contains('hidden') && currentTarget === e.currentTarget) {
+        updateTooltipPosition(e);
+      }
+    });
+    
+    element.addEventListener('mouseleave', () => {
+      clearTimeout(tooltipTimeout);
+      tooltip.classList.add('hidden');
+      currentTarget = null;
+    });
+    
+    // Hide tooltip on click
+    element.addEventListener('click', () => {
+      clearTimeout(tooltipTimeout);
+      tooltip.classList.add('hidden');
+      currentTarget = null;
+    });
+  });
+  
+  function updateTooltipPosition(e) {
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const offsetX = 15;
+    const offsetY = 15;
+    
+    let left = e.clientX + offsetX;
+    let top = e.clientY + offsetY;
+    
+    // Keep tooltip within viewport
+    if (left + tooltipRect.width > window.innerWidth) {
+      left = e.clientX - tooltipRect.width - offsetX;
+    }
+    
+    if (top + tooltipRect.height > window.innerHeight) {
+      top = e.clientY - tooltipRect.height - offsetY;
+    }
+    
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+  }
 }
 
 /* ==========================================
