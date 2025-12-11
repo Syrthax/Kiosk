@@ -314,6 +314,9 @@ async function loadPDF(pdfData) {
     // Render all pages
     await renderAllPages();
     
+    // Initialize zoom transform
+    updateZoom();
+    
     // Index PDF for search (send to worker)
     indexPDFForSearch();
     
@@ -334,24 +337,16 @@ async function renderAllPages() {
   const scrollPos = pdfContainer.scrollTop;
   const scrollPercentage = pdfContainer.scrollHeight > 0 ? scrollPos / pdfContainer.scrollHeight : 0;
   
-  // Save all annotation canvases before clearing
-  saveAllAnnotations();
-  
   pdfCanvasWrapper.innerHTML = '';
   
   for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
     await renderPage(pageNum);
   }
   
-  // Restore annotations after re-rendering
-  restoreAllAnnotations();
-  
-  // Only restore scroll position if not zooming (zoom handles it separately)
-  if (!isZooming && !zoomTimeout) {
-    requestAnimationFrame(() => {
-      pdfContainer.scrollTop = pdfContainer.scrollHeight * scrollPercentage;
-    });
-  }
+  // Restore scroll position
+  requestAnimationFrame(() => {
+    pdfContainer.scrollTop = pdfContainer.scrollHeight * scrollPercentage;
+  });
 }
 
 async function renderPage(pageNum) {
@@ -368,8 +363,9 @@ async function renderPage(pageNum) {
     canvas.className = 'pdf-canvas';
     const context = canvas.getContext('2d');
     
-    // Use currentScale directly (1.0 = actual PDF size)
-    const viewport = page.getViewport({ scale: currentScale, rotation: currentRotation });
+    // Always render at base scale (1.2) - CSS transform handles zoom
+    const baseScale = 1.2;
+    const viewport = page.getViewport({ scale: baseScale, rotation: currentRotation });
     
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -466,19 +462,27 @@ function fitToPage() {
 
 function rotatePDF() {
   currentRotation = (currentRotation + 90) % 360;
-  updateZoom();
+  // Rotation requires re-rendering
+  renderAllPages();
 }
 
 function updateZoom() {
-  previousScale = currentScale;
   zoomLevel.textContent = Math.round(currentScale * 100) + '%';
-  renderAllPages();
+  
+  // Apply CSS transform to scale the entire PDF wrapper
+  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  pdfCanvasWrapper.style.transform = `scale(${scaleValue})`;
+  pdfCanvasWrapper.style.transformOrigin = 'top center';
+  
+  // Adjust container to account for scaled content size
+  const scaledHeight = pdfCanvasWrapper.scrollHeight * scaleValue;
+  pdfCanvasWrapper.style.minHeight = `${scaledHeight}px`;
 }
 
 let zoomTimeout = null;
 
 function updateZoomSmooth() {
-  const scaleDelta = currentScale / previousScale;
+  zoomLevel.textContent = Math.round(currentScale * 100) + '%';
   
   // Get scroll position before zoom
   const scrollTop = pdfContainer.scrollTop;
@@ -493,46 +497,26 @@ function updateZoomSmooth() {
   const docX = scrollLeft + cursorX;
   const docY = scrollTop + cursorY;
   
-  // Apply instant CSS transform to all pages for smooth visual feedback
-  document.querySelectorAll('.pdf-page').forEach(page => {
-    const pageRect = page.getBoundingClientRect();
-    const pageTop = page.offsetTop;
-    const pageLeft = page.offsetLeft;
-    
-    // Calculate transform origin based on cursor position relative to this page
-    const originX = ((docX - pageLeft) / page.offsetWidth) * 100;
-    const originY = ((docY - pageTop) / page.offsetHeight) * 100;
-    
-    page.style.transform = `scale(${scaleDelta})`;
-    page.style.transformOrigin = `${originX}% ${originY}%`;
-    page.style.transition = 'transform 0.15s ease-out';
-  });
+  // Apply CSS transform to scale the entire PDF wrapper
+  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  pdfCanvasWrapper.style.transform = `scale(${scaleValue})`;
+  pdfCanvasWrapper.style.transformOrigin = 'top center';
+  pdfCanvasWrapper.style.transition = 'transform 0.15s ease-out';
   
-  zoomLevel.textContent = Math.round(currentScale * 100) + '%';
+  // Calculate new scroll position to keep zoom point centered
+  const scaleDelta = currentScale / previousScale;
+  const newDocX = docX * scaleDelta;
+  const newDocY = docY * scaleDelta;
+  const newScrollLeft = newDocX - cursorX;
+  const newScrollTop = newDocY - cursorY;
   
-  // Debounce the actual re-render
-  clearTimeout(zoomTimeout);
-  zoomTimeout = setTimeout(() => {
+  // Adjust scroll position
+  setTimeout(() => {
+    pdfContainer.scrollLeft = newScrollLeft;
+    pdfContainer.scrollTop = newScrollTop;
+    pdfCanvasWrapper.style.transition = 'none';
     previousScale = currentScale;
-    
-    // Calculate new scroll position to keep cursor point fixed
-    const newDocX = docX * scaleDelta;
-    const newDocY = docY * scaleDelta;
-    const newScrollLeft = newDocX - cursorX;
-    const newScrollTop = newDocY - cursorY;
-    
-    // Reset transforms before re-rendering
-    document.querySelectorAll('.pdf-page').forEach(page => {
-      page.style.transform = 'none';
-      page.style.transition = 'none';
-    });
-    
-    renderAllPages().then(() => {
-      // Adjust scroll to keep cursor position stable
-      pdfContainer.scrollLeft = newScrollLeft;
-      pdfContainer.scrollTop = newScrollTop;
-    });
-  }, 300);
+  }, 150);
 }
 
 /* ==========================================
