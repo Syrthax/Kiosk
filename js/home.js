@@ -21,6 +21,7 @@ let ticking = false;
 function init() {
   setupEventListeners();
   setupFloatingDockScroll();
+  setupTheme();
 }
 
 /* ==========================================
@@ -243,6 +244,48 @@ function arrayBufferToBase64(buffer) {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
+}
+
+/* ==========================================
+   THEME MANAGEMENT
+   ========================================== */
+
+function setupTheme() {
+  // Load saved theme or default to 'light'
+  const savedTheme = localStorage.getItem('kiosk_theme') || 'light';
+  
+  // Setup system theme detection for auto mode
+  const systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+  
+  function applyTheme(theme) {
+    const body = document.body;
+    
+    // Remove all theme classes
+    body.removeAttribute('data-theme');
+    body.removeAttribute('data-system-theme');
+    
+    if (theme === 'auto') {
+      // Auto mode: detect system preference
+      body.setAttribute('data-theme', 'auto');
+      const systemTheme = systemThemeMedia.matches ? 'night' : 'light';
+      body.setAttribute('data-system-theme', systemTheme);
+    } else {
+      // Manual theme selection
+      body.setAttribute('data-theme', theme);
+    }
+  }
+  
+  // Apply initial theme
+  applyTheme(savedTheme);
+  
+  // Listen for system theme changes if in auto mode
+  systemThemeMedia.addEventListener('change', (e) => {
+    const currentTheme = localStorage.getItem('kiosk_theme');
+    if (currentTheme === 'auto') {
+      const systemTheme = e.matches ? 'night' : 'light';
+      document.body.setAttribute('data-system-theme', systemTheme);
+    }
+  });
 }
 
 /* ==========================================

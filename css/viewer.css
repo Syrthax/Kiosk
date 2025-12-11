@@ -282,6 +282,56 @@
   margin-top: 2px;
 }
 
+/* Theme dropdown */
+.theme-dropdown-wrapper {
+  position: relative;
+}
+
+.theme-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-lg);
+  min-width: 180px;
+  z-index: 10001;
+  overflow: hidden;
+  animation: slideDown 0.2s ease-out;
+}
+
+.theme-dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background var(--transition);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border: none;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.theme-dropdown-item:hover {
+  background: var(--secondary-bg);
+}
+
+.theme-dropdown-item.active {
+  background: var(--accent-color);
+  color: white;
+}
+
+.theme-dropdown-item svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Account dropdown */
 .account-dropdown {
   position: absolute;
@@ -360,6 +410,15 @@
   height: auto;
   position: relative;
   z-index: 1;
+  transition: filter 0.3s ease;
+}
+
+/* Night mode PDF inversion filter */
+body[data-theme="night"] .pdf-page canvas,
+body[data-theme="night"] .pdf-page .pdf-canvas,
+body[data-theme="auto"][data-system-theme="night"] .pdf-page canvas,
+body[data-theme="auto"][data-system-theme="night"] .pdf-page .pdf-canvas {
+  filter: invert(1) hue-rotate(180deg);
 }
 
 /* Text layer for selection */

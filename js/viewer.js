@@ -16,6 +16,8 @@ let searchWorker = null;
 let currentTool = null;
 let currentColor = '#ffc107';
 let currentThickness = 3;
+let currentTheme = 'light';
+let systemThemeMedia = null;
 
 // DOM Elements
 const pdfNameEl = document.getElementById('pdf-name');
@@ -37,6 +39,7 @@ function init() {
   setupPinchZoom();
   setupDockAutoHide();
   setupCloseWarning();
+  setupTheme();
   loadPDFFromURL();
 }
 
@@ -125,6 +128,86 @@ function setupEventListeners() {
   thicknessSlider.addEventListener('input', (e) => {
     currentThickness = parseInt(e.target.value);
   });
+  
+  // Theme toggle
+  const themeToggle = document.getElementById('theme-toggle');
+  const themeDropdown = document.getElementById('theme-dropdown');
+  
+  themeToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    themeDropdown.classList.toggle('hidden');
+  });
+  
+  document.querySelectorAll('.theme-dropdown-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const theme = item.dataset.theme;
+      setTheme(theme);
+      themeDropdown.classList.add('hidden');
+    });
+  });
+  
+  document.addEventListener('click', (e) => {
+    if (!themeDropdown.contains(e.target) && e.target !== themeToggle) {
+      themeDropdown.classList.add('hidden');
+    }
+  });
+}
+
+/* ==========================================
+   THEME MANAGEMENT
+   ========================================== */
+
+function setupTheme() {
+  // Load saved theme or default to 'light'
+  currentTheme = localStorage.getItem('kiosk_theme') || 'light';
+  
+  // Setup system theme detection for auto mode
+  systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+  systemThemeMedia.addEventListener('change', handleSystemThemeChange);
+  
+  // Apply initial theme
+  applyTheme(currentTheme);
+}
+
+function setTheme(theme) {
+  currentTheme = theme;
+  localStorage.setItem('kiosk_theme', theme);
+  applyTheme(theme);
+}
+
+function applyTheme(theme) {
+  const body = document.body;
+  
+  // Remove all theme classes
+  body.removeAttribute('data-theme');
+  body.removeAttribute('data-system-theme');
+  
+  // Update active state in dropdown
+  document.querySelectorAll('.theme-dropdown-item').forEach(item => {
+    item.classList.remove('active');
+    if (item.dataset.theme === theme) {
+      item.classList.add('active');
+    }
+  });
+  
+  if (theme === 'auto') {
+    // Auto mode: detect system preference
+    body.setAttribute('data-theme', 'auto');
+    const systemTheme = systemThemeMedia.matches ? 'night' : 'light';
+    body.setAttribute('data-system-theme', systemTheme);
+  } else {
+    // Manual theme selection
+    body.setAttribute('data-theme', theme);
+  }
+}
+
+function handleSystemThemeChange(e) {
+  // Only update if we're in auto mode
+  if (currentTheme === 'auto') {
+    const systemTheme = e.matches ? 'night' : 'light';
+    document.body.setAttribute('data-system-theme', systemTheme);
+  }
 }
 
 /* ==========================================

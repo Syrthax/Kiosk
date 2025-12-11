@@ -40,32 +40,58 @@
   --transition-bounce: 400ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
-/* Dark Mode (Black & Red) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --glass-bg: rgba(26, 26, 26, 0.85);
-    --glass-bg-dark: rgba(26, 26, 26, 0.65);
-    --glass-border: rgba(60, 60, 60, 0.5);
-    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
-    --glass-shadow-lg: 0 15px 50px 0 rgba(0, 0, 0, 0.7);
-    
-    --primary-bg: rgba(18, 18, 18, 0.98);
-    --secondary-bg: rgba(26, 26, 26, 0.8);
-    --tertiary-bg: rgba(35, 35, 35, 0.6);
-    --border-color: rgba(60, 60, 60, 0.6);
-    --text-primary: #f5f5f5;
-    --text-secondary: #a3a3a3;
-    --text-muted: #737373;
-    --accent-color: #ef4444;
-    --accent-hover: #f87171;
-    --accent-glow: rgba(239, 68, 68, 0.3);
-    --success-color: #22c55e;
-    --warning-color: #f97316;
-    --danger-color: #ef4444;
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
-  }
+/* Dark Mode - Black background, white PDF pages */
+body[data-theme="dark"],
+body[data-theme="auto"][data-system-theme="dark"] {
+  --glass-bg: rgba(26, 26, 26, 0.85);
+  --glass-bg-dark: rgba(26, 26, 26, 0.65);
+  --glass-border: rgba(60, 60, 60, 0.5);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --glass-shadow-lg: 0 15px 50px 0 rgba(0, 0, 0, 0.7);
+  
+  --primary-bg: rgba(18, 18, 18, 0.98);
+  --secondary-bg: rgba(26, 26, 26, 0.8);
+  --tertiary-bg: rgba(35, 35, 35, 0.6);
+  --border-color: rgba(60, 60, 60, 0.6);
+  --text-primary: #f5f5f5;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+  --accent-color: #ef4444;
+  --accent-hover: #f87171;
+  --accent-glow: rgba(239, 68, 68, 0.3);
+  --success-color: #22c55e;
+  --warning-color: #f97316;
+  --danger-color: #ef4444;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Night Mode - Black background AND inverted PDF */
+body[data-theme="night"],
+body[data-theme="auto"][data-system-theme="night"] {
+  --glass-bg: rgba(26, 26, 26, 0.85);
+  --glass-bg-dark: rgba(26, 26, 26, 0.65);
+  --glass-border: rgba(60, 60, 60, 0.5);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --glass-shadow-lg: 0 15px 50px 0 rgba(0, 0, 0, 0.7);
+  
+  --primary-bg: rgba(18, 18, 18, 0.98);
+  --secondary-bg: rgba(26, 26, 26, 0.8);
+  --tertiary-bg: rgba(35, 35, 35, 0.6);
+  --border-color: rgba(60, 60, 60, 0.6);
+  --text-primary: #f5f5f5;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+  --accent-color: #ef4444;
+  --accent-hover: #f87171;
+  --accent-glow: rgba(239, 68, 68, 0.3);
+  --success-color: #22c55e;
+  --warning-color: #f97316;
+  --danger-color: #ef4444;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 body {
@@ -80,12 +106,15 @@ body {
   line-height: 1.6;
   overflow-x: hidden;
   min-height: 100vh;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-  }
+/* Dark/Night mode body background */
+body[data-theme="dark"],
+body[data-theme="night"],
+body[data-theme="auto"][data-system-theme="dark"],
+body[data-theme="auto"][data-system-theme="night"] {
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
 }
 
 /* Typography */
