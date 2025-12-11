@@ -85,16 +85,19 @@ function setupFloatingDockScroll() {
 
 function handleFloatingDockScroll() {
   const currentScrollY = window.scrollY;
-  scrollVelocity = currentScrollY - lastScrollY;
   
-  // Hide dock when scrolling down fast (reduced threshold for faster response)
-  if (scrollVelocity > 3 && currentScrollY > 80) {
-    floatingDock.classList.add('hidden');
+  if (currentScrollY > 300) {
+    floatingDock.style.opacity = '1';
+    floatingDock.style.transform = 'translateX(-50%) translateY(0)';
+  } else {
+    floatingDock.style.opacity = '0.9';
   }
   
-  // Show dock when scrolling up (more sensitive)
-  if (scrollVelocity < -1 || currentScrollY < 30) {
-    floatingDock.classList.remove('hidden');
+  // Hide dock when scrolling down, show when scrolling up
+  if (currentScrollY > lastScrollY && currentScrollY > 500) {
+    floatingDock.style.transform = 'translateX(-50%) translateY(150%)';
+  } else {
+    floatingDock.style.transform = 'translateX(-50%) translateY(0)';
   }
   
   lastScrollY = currentScrollY;
