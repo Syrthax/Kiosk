@@ -1,23 +1,38 @@
 /* ==========================================
-   KIOSK – VIEWER PAGE LOGIC
+   KIOSK EXTENSION – VIEWER PAGE LOGIC
    Handles PDF rendering, navigation, search, and annotations
    ========================================== */
 
-// Configure PDF.js worker (use local file for extension)
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+// Configure PDF.js worker for extension
+pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/pdf.worker.min.js');
 
 // Global state
 let pdfDocument = null;
 let currentScale = 1.2;
 let previousScale = 1.2;
 let currentRotation = 0;
-let currentPDFName = '';
-let searchWorker = null;
+let currentPDFName = 'Document.pdf';
+let currentPDFUrl = null;
 let currentTool = null;
 let currentColor = '#ffc107';
 let currentThickness = 3;
 let currentTheme = 'light';
 let systemThemeMedia = null;
+let undoStack = [];
+let redoStack = [];
+let activeAction = null;
+let searchMatches = [];
+let activeSearchTimeout = null;
+let baseContentHeight = 0;
+
+// Lazy rendering state
+let pageObserver = null;
+let renderedPages = new Set();
+let renderingPages = new Set();
+let pageViewports = new Map();
+
+// Annotation history
+let annotationHistory = new Map();
 
 // DOM Elements
 const pdfNameEl = document.getElementById('pdf-name');
@@ -28,6 +43,7 @@ const pdfCanvasWrapper = document.getElementById('pdf-canvas-wrapper');
 const pdfError = document.getElementById('pdf-error');
 const pdfContainer = document.getElementById('pdf-container');
 const zoomLevel = document.getElementById('zoom-level');
+const annotationDock = document.querySelector('.annotation-dock');
 
 /* ==========================================
    INITIALIZATION
@@ -35,28 +51,10 @@ const zoomLevel = document.getElementById('zoom-level');
 
 function init() {
   setupEventListeners();
-  setupSearchWorker();
   setupPinchZoom();
   setupDockAutoHide();
-  setupCloseWarning();
   setupTheme();
-  setupTooltips();
   loadPDFFromURL();
-}
-
-/* ==========================================
-   CLOSE WARNING
-   ========================================== */
-
-function setupCloseWarning() {
-  window.addEventListener('beforeunload', (e) => {
-    // Only show warning if PDF is loaded
-    if (pdfDocument) {
-      e.preventDefault();
-      e.returnValue = 'Download recommended! Your annotations will not be saved unless you download the PDF.';
-      return e.returnValue;
-    }
-  });
 }
 
 /* ==========================================
@@ -64,11 +62,6 @@ function setupCloseWarning() {
    ========================================== */
 
 function setupEventListeners() {
-  // Home button
-  document.getElementById('home-button').addEventListener('click', () => {
-    window.location.href = 'index.html';
-  });
-  
   // Zoom controls
   document.getElementById('zoom-in').addEventListener('click', () => zoomIn());
   document.getElementById('zoom-out').addEventListener('click', () => zoomOut());
@@ -79,20 +72,35 @@ function setupEventListeners() {
   // Download
   document.getElementById('download').addEventListener('click', () => downloadPDF());
   
+  // Go back button
+  document.getElementById('go-back')?.addEventListener('click', () => window.close());
+  
   // Search
   searchBar.addEventListener('input', handleSearchInput);
+  searchBar.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (searchMatches.length > 0) {
+        jumpToMatch(0);
+        searchResults.classList.add('hidden');
+      }
+    }
+  });
   searchBar.addEventListener('focus', () => {
-    if (searchBar.value.trim()) {
+    if (searchBar.value.trim() && searchMatches.length > 0) {
       searchResults.classList.remove('hidden');
     }
   });
   
-  // Close search results when clicking outside
   document.addEventListener('click', (e) => {
     if (!searchResults.contains(e.target) && e.target !== searchBar) {
       searchResults.classList.add('hidden');
     }
   });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', handleKeyShortcuts);
+  pdfContainer.addEventListener('scroll', clearSearchHighlights);
   
   // Annotation tools
   document.querySelectorAll('.annotation-tool').forEach(tool => {
@@ -123,8 +131,7 @@ function setupEventListeners() {
   document.querySelectorAll('.theme-dropdown-item').forEach(item => {
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      const theme = item.dataset.theme;
-      setTheme(theme);
+      setTheme(item.dataset.theme);
       themeDropdown.classList.add('hidden');
     });
   });
@@ -141,14 +148,9 @@ function setupEventListeners() {
    ========================================== */
 
 function setupTheme() {
-  // Load saved theme or default to 'light'
   currentTheme = localStorage.getItem('kiosk_theme') || 'light';
-  
-  // Setup system theme detection for auto mode
   systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
   systemThemeMedia.addEventListener('change', handleSystemThemeChange);
-  
-  // Apply initial theme
   applyTheme(currentTheme);
 }
 
@@ -160,40 +162,29 @@ function setTheme(theme) {
 
 function applyTheme(theme) {
   const body = document.body;
-  
-  // Remove all theme classes
   body.removeAttribute('data-theme');
   body.removeAttribute('data-system-theme');
   
-  // Update active state in dropdown
   document.querySelectorAll('.theme-dropdown-item').forEach(item => {
-    item.classList.remove('active');
-    if (item.dataset.theme === theme) {
-      item.classList.add('active');
-    }
+    item.classList.toggle('active', item.dataset.theme === theme);
   });
   
   if (theme === 'auto') {
-    // Auto mode: detect system preference
     body.setAttribute('data-theme', 'auto');
-    const systemTheme = systemThemeMedia.matches ? 'night' : 'light';
-    body.setAttribute('data-system-theme', systemTheme);
+    body.setAttribute('data-system-theme', systemThemeMedia.matches ? 'night' : 'light');
   } else {
-    // Manual theme selection
     body.setAttribute('data-theme', theme);
   }
 }
 
 function handleSystemThemeChange(e) {
-  // Only update if we're in auto mode
   if (currentTheme === 'auto') {
-    const systemTheme = e.matches ? 'night' : 'light';
-    document.body.setAttribute('data-system-theme', systemTheme);
+    document.body.setAttribute('data-system-theme', e.matches ? 'night' : 'light');
   }
 }
 
 /* ==========================================
-   COLOR PICKER SETUP
+   COLOR PICKER
    ========================================== */
 
 function setupColorPicker() {
@@ -203,9 +194,8 @@ function setupColorPicker() {
   const hueSlider = document.getElementById('hue-slider');
   const hexInput = document.getElementById('hex-input');
   
-  let currentHue = 45; // Start with yellow hue
+  let currentHue = 45;
   
-  // Toggle color picker
   colorPickerButton.addEventListener('click', (e) => {
     e.stopPropagation();
     colorPicker.classList.toggle('hidden');
@@ -214,37 +204,28 @@ function setupColorPicker() {
     }
   });
   
-  // Close picker when clicking outside
   document.addEventListener('click', (e) => {
     if (!colorPicker.contains(e.target) && e.target !== colorPickerButton) {
       colorPicker.classList.add('hidden');
     }
   });
   
-  // Prevent picker from closing when clicking inside it
-  colorPicker.addEventListener('click', (e) => {
-    e.stopPropagation();
-  });
+  colorPicker.addEventListener('click', (e) => e.stopPropagation());
   
-  // Preset color buttons
   document.querySelectorAll('.color-option').forEach(option => {
     option.addEventListener('click', (e) => {
       e.stopPropagation();
-      const color = option.dataset.color;
-      setColor(color);
+      setColor(option.dataset.color);
     });
   });
   
-  // Draw initial spectrum
   drawColorSpectrum(currentHue);
   
-  // Hue slider
   hueSlider.addEventListener('input', (e) => {
     currentHue = parseInt(e.target.value);
     drawColorSpectrum(currentHue);
   });
   
-  // Color spectrum canvas click
   colorSpectrum.addEventListener('click', (e) => {
     const rect = colorSpectrum.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -253,21 +234,10 @@ function setupColorPicker() {
     setColor(color);
   });
   
-  // Hex input
   hexInput.addEventListener('input', (e) => {
     let hex = e.target.value.replace(/[^0-9A-Fa-f]/g, '').substring(0, 6);
     e.target.value = hex;
-    
-    if (hex.length === 6) {
-      setColor('#' + hex);
-    }
-  });
-  
-  hexInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && hexInput.value.length === 6) {
-      setColor('#' + hexInput.value);
-      colorPicker.classList.add('hidden');
-    }
+    if (hex.length === 6) setColor('#' + hex);
   });
 }
 
@@ -277,11 +247,8 @@ function drawColorSpectrum(hue) {
   const width = canvas.width;
   const height = canvas.height;
   
-  // Draw saturation gradient (left to right: white to color)
   for (let x = 0; x < width; x++) {
     const saturation = (x / width) * 100;
-    
-    // Draw brightness gradient (top to bottom: color to black)
     for (let y = 0; y < height; y++) {
       const brightness = 100 - (y / height) * 100;
       ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${brightness}%)`;
@@ -299,26 +266,17 @@ function getColorFromSpectrum(x, y, hue, width, height) {
 function hslToHex(h, s, l) {
   s /= 100;
   l /= 100;
-  
   const c = (1 - Math.abs(2 * l - 1)) * s;
   const x = c * (1 - Math.abs((h / 60) % 2 - 1));
   const m = l - c / 2;
-  
   let r = 0, g = 0, b = 0;
   
-  if (h >= 0 && h < 60) {
-    r = c; g = x; b = 0;
-  } else if (h >= 60 && h < 120) {
-    r = x; g = c; b = 0;
-  } else if (h >= 120 && h < 180) {
-    r = 0; g = c; b = x;
-  } else if (h >= 180 && h < 240) {
-    r = 0; g = x; b = c;
-  } else if (h >= 240 && h < 300) {
-    r = x; g = 0; b = c;
-  } else if (h >= 300 && h < 360) {
-    r = c; g = 0; b = x;
-  }
+  if (h >= 0 && h < 60) { r = c; g = x; b = 0; }
+  else if (h >= 60 && h < 120) { r = x; g = c; b = 0; }
+  else if (h >= 120 && h < 180) { r = 0; g = c; b = x; }
+  else if (h >= 180 && h < 240) { r = 0; g = x; b = c; }
+  else if (h >= 240 && h < 300) { r = x; g = 0; b = c; }
+  else if (h >= 300 && h < 360) { r = c; g = 0; b = x; }
   
   r = Math.round((r + m) * 255);
   g = Math.round((g + m) * 255);
@@ -329,145 +287,30 @@ function hslToHex(h, s, l) {
 
 function setColor(color) {
   currentColor = color;
-  const colorPickerButton = document.getElementById('color-picker-button');
-  const hexInput = document.getElementById('hex-input');
-  
-  colorPickerButton.style.backgroundColor = color;
-  hexInput.value = color.replace('#', '').toUpperCase();
+  document.getElementById('color-picker-button').style.backgroundColor = color;
+  document.getElementById('hex-input').value = color.replace('#', '').toUpperCase();
 }
 
 /* ==========================================
-   CUSTOM TOOLTIPS
+   PINCH TO ZOOM
    ========================================== */
 
-function setupTooltips() {
-  const tooltip = document.getElementById('custom-tooltip');
-  const tooltipTitle = tooltip.querySelector('.tooltip-title');
-  const tooltipDescription = tooltip.querySelector('.tooltip-description');
-  
-  let tooltipTimeout = null;
-  let currentTarget = null;
-  
-  // Find all elements with tooltip data
-  const tooltipElements = document.querySelectorAll('[data-tooltip-title]');
-  
-  tooltipElements.forEach(element => {
-    element.addEventListener('mouseenter', (e) => {
-      currentTarget = e.currentTarget;
-      
-      // Clear any existing timeout
-      clearTimeout(tooltipTimeout);
-      
-      // Wait a moment before showing tooltip
-      tooltipTimeout = setTimeout(() => {
-        const title = currentTarget.dataset.tooltipTitle;
-        const description = currentTarget.dataset.tooltipDesc;
-        
-        if (title) {
-          tooltipTitle.textContent = title;
-          tooltipDescription.textContent = description || '';
-          tooltip.classList.remove('hidden');
-          updateTooltipPosition(e);
-        }
-      }, 500); // 500ms delay before showing
-    });
-    
-    element.addEventListener('mousemove', (e) => {
-      if (!tooltip.classList.contains('hidden') && currentTarget === e.currentTarget) {
-        updateTooltipPosition(e);
-      }
-    });
-    
-    element.addEventListener('mouseleave', () => {
-      clearTimeout(tooltipTimeout);
-      tooltip.classList.add('hidden');
-      currentTarget = null;
-    });
-    
-    // Hide tooltip on click
-    element.addEventListener('click', () => {
-      clearTimeout(tooltipTimeout);
-      tooltip.classList.add('hidden');
-      currentTarget = null;
-    });
-  });
-  
-  function updateTooltipPosition(e) {
-    const tooltipRect = tooltip.getBoundingClientRect();
-    const offsetX = 15;
-    const offsetY = 15;
-    
-    let left = e.clientX + offsetX;
-    let top = e.clientY + offsetY;
-    
-    // Keep tooltip within viewport
-    if (left + tooltipRect.width > window.innerWidth) {
-      left = e.clientX - tooltipRect.width - offsetX;
-    }
-    
-    if (top + tooltipRect.height > window.innerHeight) {
-      top = e.clientY - tooltipRect.height - offsetY;
-    }
-    
-    tooltip.style.left = left + 'px';
-    tooltip.style.top = top + 'px';
-  }
-}
-
-/* ==========================================
-   SEARCH WORKER SETUP
-   ========================================== */
-
-function setupSearchWorker() {
-  searchWorker = new Worker('js/pdfSearchWorker.js');
-  
-  searchWorker.onmessage = (e) => {
-    const { type, matches } = e.data;
-    
-    if (type === 'searchResults') {
-      displaySearchResults(matches);
-    }
-  };
-  
-  searchWorker.onerror = (error) => {
-    console.error('Search worker error:', error);
-  };
-}
-
-/* ==========================================
-   PINCH TO ZOOM SETUP
-   ========================================== */
-
-let initialPinchDistance = 0;
-let initialScale = 1.0;
-let isZooming = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
 function setupPinchZoom() {
-  // Prevent default pinch zoom on the container
   pdfContainer.addEventListener('wheel', handleWheelZoom, { passive: false });
-  
-  // Track mouse position for zoom origin
   pdfContainer.addEventListener('mousemove', (e) => {
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
   });
-  
-  // Touch events for trackpad pinch
-  pdfContainer.addEventListener('gesturestart', handleGestureStart, { passive: false });
-  pdfContainer.addEventListener('gesturechange', handleGestureChange, { passive: false });
-  pdfContainer.addEventListener('gestureend', handleGestureEnd, { passive: false });
 }
 
 function handleWheelZoom(e) {
-  // Check if Ctrl/Cmd is pressed (pinch on trackpad triggers this)
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
-    
     const delta = e.deltaY;
     const zoomFactor = delta > 0 ? 0.95 : 1.05;
-    
     const newScale = currentScale * zoomFactor;
     if (newScale >= 0.5 && newScale <= 3.0) {
       currentScale = newScale;
@@ -476,41 +319,15 @@ function handleWheelZoom(e) {
   }
 }
 
-function handleGestureStart(e) {
-  e.preventDefault();
-  initialScale = currentScale;
-  isZooming = true;
-}
-
-function handleGestureChange(e) {
-  e.preventDefault();
-  
-  // e.scale gives us the pinch scale factor
-  const newScale = initialScale * e.scale;
-  if (newScale >= 0.5 && newScale <= 3.0) {
-    currentScale = newScale;
-    updateZoomSmooth();
-  }
-}
-
-function handleGestureEnd(e) {
-  e.preventDefault();
-  isZooming = false;
-}
-
 /* ==========================================
-   DOCK AUTO-HIDE ON SCROLL
+   DOCK AUTO-HIDE
    ========================================== */
 
 let lastScrollTop = 0;
 let scrollTimeout = null;
-let hideTimeout = null;
-let scrollVelocity = 0;
-const annotationDock = document.querySelector('.annotation-dock');
 
 function setupDockAutoHide() {
   let ticking = false;
-  
   pdfContainer.addEventListener('scroll', () => {
     if (!ticking) {
       window.requestAnimationFrame(() => {
@@ -525,90 +342,79 @@ function setupDockAutoHide() {
 function handleDockScroll() {
   const scrollTop = pdfContainer.scrollTop;
   const scrollDelta = scrollTop - lastScrollTop;
+  const scrollVelocity = Math.abs(scrollDelta);
   
-  // Calculate scroll velocity
-  scrollVelocity = Math.abs(scrollDelta);
-  
-  // Clear timeouts
   clearTimeout(scrollTimeout);
-  clearTimeout(hideTimeout);
   
   if (scrollTop > lastScrollTop && scrollTop > 100 && scrollVelocity > 5) {
-    // Fast scrolling down - hide dock
     annotationDock.classList.add('hidden');
   } else if (scrollTop < lastScrollTop) {
-    // Any scroll up - show dock immediately
     annotationDock.classList.remove('hidden');
   }
   
   lastScrollTop = scrollTop;
   
-  // Show dock after scrolling stops for 1 second
   scrollTimeout = setTimeout(() => {
     annotationDock.classList.remove('hidden');
   }, 1000);
 }
 
 /* ==========================================
-   LOAD PDF FROM URL
-   ========================================== */
-
-function loadPDFFromURL() {
-  // Get PDF ID from query string
-  const urlParams = new URLSearchParams(window.location.search);
-  const pdfId = urlParams.get('id');
-  
-  if (!pdfId) {
-    showError('No PDF specified');
-    return;
-  }
-  
-  // Get PDF data from sessionStorage
-  const pdfBase64 = sessionStorage.getItem(`kiosk_pdf_${pdfId}`);
-  const pdfName = sessionStorage.getItem(`kiosk_pdf_name_${pdfId}`);
-  
-  if (!pdfBase64) {
-    showError('PDF not found. Please select a PDF from the home page.');
-    return;
-  }
-  
-  currentPDFName = pdfName || 'Document.pdf';
-  updatePDFName(currentPDFName);
-  
-  // Convert base64 back to Uint8Array
-  const pdfData = base64ToUint8Array(pdfBase64);
-  
-  // Load the PDF
-  loadPDF(pdfData);
-}
-
-/* ==========================================
    LOAD PDF
    ========================================== */
 
-async function loadPDF(pdfData) {
+async function loadPDFFromURL() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const pdfUrl = urlParams.get('url');
+  const pdfName = urlParams.get('name');
+  
+  if (!pdfUrl) {
+    showError('No PDF URL specified');
+    return;
+  }
+  
+  currentPDFUrl = pdfUrl;
+  currentPDFName = pdfName || extractFilename(pdfUrl);
+  updatePDFName(currentPDFName);
+  
   try {
     pdfLoading.classList.remove('hidden');
     pdfError.classList.add('hidden');
     pdfCanvasWrapper.classList.add('hidden');
     
-    // Load PDF from Uint8Array data
-    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-    pdfDocument = await loadingTask.promise;
+    // Cleanup previous document
+    if (pdfDocument) {
+      pdfDocument.destroy();
+      pdfDocument = null;
+    }
     
+    // Load PDF from URL
+    const loadingTask = pdfjsLib.getDocument({
+      url: pdfUrl,
+      disableAutoFetch: false,
+      disableStream: false
+    });
+    
+    pdfDocument = await loadingTask.promise;
     console.log(`PDF loaded: ${pdfDocument.numPages} pages`);
     
-    // Render all pages
+    // Render pages
     await renderAllPages();
-    
-    // Initialize zoom transform
     updateZoom();
-    
-    // Index PDF for search (send to worker)
     indexPDFForSearch();
     
     pdfLoading.classList.add('hidden');
     pdfCanvasWrapper.classList.remove('hidden');
+    
+    // Add to recent PDFs
+    chrome.runtime.sendMessage({
+      type: 'ADD_RECENT_PDF',
+      payload: {
+        url: pdfUrl,
+        name: currentPDFName,
+        pageCount: pdfDocument.numPages
+      }
+    });
     
   } catch (error) {
     console.error('Error loading PDF:', error);
@@ -616,35 +422,14 @@ async function loadPDF(pdfData) {
   }
 }
 
-/* ==========================================
-   LOAD PDF FROM FILE (for extension)
-   ========================================== */
-
-async function loadPDFFromFile(file) {
+function extractFilename(url) {
   try {
-    currentPDFName = file.name || 'Document.pdf';
-    updatePDFName(currentPDFName);
-    
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-      const arrayBuffer = e.target.result;
-      const pdfData = new Uint8Array(arrayBuffer);
-      await loadPDF(pdfData);
-    };
-    reader.onerror = function() {
-      showError('Failed to read file');
-    };
-    reader.readAsArrayBuffer(file);
-  } catch (error) {
-    console.error('Error loading file:', error);
-    showError('Failed to load file: ' + error.message);
+    const pathname = new URL(url).pathname;
+    return decodeURIComponent(pathname.split('/').pop() || 'document.pdf');
+  } catch {
+    return 'document.pdf';
   }
 }
-
-// Make functions globally accessible for extension
-window.loadPDFFromFile = loadPDFFromFile;
-window.loadPDF = loadPDF;
-window.updatePDFName = updatePDFName;
 
 /* ==========================================
    RENDER PDF PAGES
@@ -655,58 +440,93 @@ async function renderAllPages() {
   const scrollPercentage = pdfContainer.scrollHeight > 0 ? scrollPos / pdfContainer.scrollHeight : 0;
   
   pdfCanvasWrapper.innerHTML = '';
+  renderedPages.clear();
+  renderingPages.clear();
+  pageViewports.clear();
   
-  for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-    await renderPage(pageNum);
-  }
+  if (pageObserver) pageObserver.disconnect();
   
-  // Restore scroll position
+  await createPagePlaceholders();
+  setupLazyRendering();
+  
+  baseContentHeight = pdfCanvasWrapper.scrollHeight;
+  const scaleValue = currentScale / 1.2;
+  pdfCanvasWrapper.style.height = `${baseContentHeight * scaleValue}px`;
+  
   requestAnimationFrame(() => {
     pdfContainer.scrollTop = pdfContainer.scrollHeight * scrollPercentage;
   });
 }
 
-// Export for extension use
-window.renderAllPages = renderAllPages;
+async function createPagePlaceholders() {
+  const firstPage = await pdfDocument.getPage(1);
+  const baseScale = 1.2;
+  const defaultViewport = firstPage.getViewport({ scale: baseScale, rotation: currentRotation });
+  
+  for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+    const pageContainer = document.createElement('div');
+    pageContainer.className = 'pdf-page pdf-page-placeholder';
+    pageContainer.dataset.pageNumber = pageNum;
+    pageContainer.style.width = defaultViewport.width + 'px';
+    pageContainer.style.height = defaultViewport.height + 'px';
+    
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'page-loading-indicator';
+    loadingIndicator.innerHTML = `<span>Page ${pageNum}</span>`;
+    pageContainer.appendChild(loadingIndicator);
+    
+    pdfCanvasWrapper.appendChild(pageContainer);
+  }
+  
+  firstPage.cleanup();
+}
 
-async function renderPage(pageNum) {
+function setupLazyRendering() {
+  pageObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const pageNum = parseInt(entry.target.dataset.pageNumber);
+      if (entry.isIntersecting && !renderedPages.has(pageNum) && !renderingPages.has(pageNum)) {
+        renderPageLazy(pageNum, entry.target);
+      }
+    });
+  }, {
+    root: pdfContainer,
+    rootMargin: '200px 0px',
+    threshold: 0
+  });
+  
+  document.querySelectorAll('.pdf-page').forEach(page => pageObserver.observe(page));
+}
+
+async function renderPageLazy(pageNum, pageContainer) {
+  if (renderedPages.has(pageNum) || renderingPages.has(pageNum)) return;
+  
+  renderingPages.add(pageNum);
+  
   try {
     const page = await pdfDocument.getPage(pageNum);
+    const baseScale = 1.2;
+    const viewport = page.getViewport({ scale: baseScale, rotation: currentRotation });
+    pageViewports.set(pageNum, viewport);
     
-    // Create container for this page
-    const pageContainer = document.createElement('div');
-    pageContainer.className = 'pdf-page';
-    pageContainer.dataset.pageNumber = pageNum;
+    pageContainer.style.width = viewport.width + 'px';
+    pageContainer.style.height = viewport.height + 'px';
     
-    // Create canvas for PDF
+    // PDF canvas
     const canvas = document.createElement('canvas');
     canvas.className = 'pdf-canvas';
     const context = canvas.getContext('2d');
-    
-    // Always render at base scale (1.2) - CSS transform handles zoom
-    const baseScale = 1.2;
-    const viewport = page.getViewport({ scale: baseScale, rotation: currentRotation });
-    
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    canvas.style.display = 'block';
     
-    // Render page
-    const renderContext = {
-      canvasContext: context,
-      viewport: viewport
-    };
+    await page.render({ canvasContext: context, viewport }).promise;
     
-    await page.render(renderContext).promise;
-    
-    // Create text layer for selection
+    // Text layer
     const textLayerDiv = document.createElement('div');
     textLayerDiv.className = 'textLayer';
     textLayerDiv.style.width = viewport.width + 'px';
     textLayerDiv.style.height = viewport.height + 'px';
-    textLayerDiv.style.pointerEvents = 'auto'; // Ensure text selection is enabled by default
     
-    // Render text layer
     const textContent = await page.getTextContent();
     pdfjsLib.renderTextLayer({
       textContentSource: textContent,
@@ -715,7 +535,7 @@ async function renderPage(pageNum) {
       textDivs: []
     });
     
-    // Create annotation canvas overlay
+    // Annotation canvas
     const annotationCanvas = document.createElement('canvas');
     annotationCanvas.className = 'annotation-canvas';
     annotationCanvas.width = viewport.width;
@@ -726,16 +546,45 @@ async function renderPage(pageNum) {
     annotationCanvas.style.pointerEvents = currentTool ? 'auto' : 'none';
     annotationCanvas.dataset.pageNumber = pageNum;
     
-    // Add mouse event listeners for annotations
     setupAnnotationListeners(annotationCanvas);
     
+    pageContainer.innerHTML = '';
+    pageContainer.classList.remove('pdf-page-placeholder');
     pageContainer.appendChild(canvas);
     pageContainer.appendChild(textLayerDiv);
     pageContainer.appendChild(annotationCanvas);
-    pdfCanvasWrapper.appendChild(pageContainer);
+    
+    restorePageAnnotations(pageNum, annotationCanvas);
+    
+    page.cleanup();
+    renderedPages.add(pageNum);
+    renderingPages.delete(pageNum);
     
   } catch (error) {
     console.error(`Error rendering page ${pageNum}:`, error);
+    renderingPages.delete(pageNum);
+    pageContainer.innerHTML = `<div class="page-error">Failed to load page ${pageNum}</div>`;
+  }
+}
+
+function restorePageAnnotations(pageNum, canvas) {
+  const savedData = annotationHistory.get(pageNum);
+  if (savedData && savedData.imageData) {
+    const ctx = canvas.getContext('2d');
+    const scaleRatio = currentScale / savedData.scale;
+    
+    if (Math.abs(scaleRatio - 1.0) < 0.01) {
+      ctx.putImageData(savedData.imageData, 0, 0);
+    } else {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = savedData.width;
+      tempCanvas.height = savedData.height;
+      tempCanvas.getContext('2d').putImageData(savedData.imageData, 0, 0);
+      ctx.save();
+      ctx.scale(scaleRatio, scaleRatio);
+      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.restore();
+    }
   }
 }
 
@@ -766,7 +615,6 @@ function fitToWidth() {
 }
 
 function fitToPage() {
-  // Calculate scale to fit container height
   const containerHeight = pdfContainer.clientHeight - 80;
   if (pdfDocument) {
     pdfDocument.getPage(1).then(page => {
@@ -782,55 +630,43 @@ function fitToPage() {
 
 function rotatePDF() {
   currentRotation = (currentRotation + 90) % 360;
-  // Rotation requires re-rendering
+  saveAllAnnotations();
   renderAllPages();
 }
 
 function updateZoom() {
   zoomLevel.textContent = Math.round(currentScale * 100) + '%';
-  
-  // Apply CSS transform to scale the entire PDF wrapper
-  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  const scaleValue = currentScale / 1.2;
   pdfCanvasWrapper.style.transform = `scale(${scaleValue})`;
   pdfCanvasWrapper.style.transformOrigin = 'top center';
-  
-  // Adjust container to account for scaled content size
-  const scaledHeight = pdfCanvasWrapper.scrollHeight * scaleValue;
-  pdfCanvasWrapper.style.minHeight = `${scaledHeight}px`;
+  if (baseContentHeight > 0) {
+    pdfCanvasWrapper.style.height = `${baseContentHeight * scaleValue}px`;
+  }
 }
-
-let zoomTimeout = null;
 
 function updateZoomSmooth() {
   zoomLevel.textContent = Math.round(currentScale * 100) + '%';
   
-  // Get scroll position before zoom
   const scrollTop = pdfContainer.scrollTop;
   const scrollLeft = pdfContainer.scrollLeft;
   const containerRect = pdfContainer.getBoundingClientRect();
-  
-  // Calculate cursor position relative to container
   const cursorX = lastMouseX - containerRect.left;
   const cursorY = lastMouseY - containerRect.top;
-  
-  // Calculate the point in the document that's under the cursor
   const docX = scrollLeft + cursorX;
   const docY = scrollTop + cursorY;
   
-  // Apply CSS transform to scale the entire PDF wrapper
-  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  const scaleValue = currentScale / 1.2;
   pdfCanvasWrapper.style.transform = `scale(${scaleValue})`;
   pdfCanvasWrapper.style.transformOrigin = 'top center';
   pdfCanvasWrapper.style.transition = 'transform 0.15s ease-out';
+  if (baseContentHeight > 0) {
+    pdfCanvasWrapper.style.height = `${baseContentHeight * scaleValue}px`;
+  }
   
-  // Calculate new scroll position to keep zoom point centered
   const scaleDelta = currentScale / previousScale;
-  const newDocX = docX * scaleDelta;
-  const newDocY = docY * scaleDelta;
-  const newScrollLeft = newDocX - cursorX;
-  const newScrollTop = newDocY - cursorY;
+  const newScrollLeft = docX * scaleDelta - cursorX;
+  const newScrollTop = docY * scaleDelta - cursorY;
   
-  // Adjust scroll position
   setTimeout(() => {
     pdfContainer.scrollLeft = newScrollLeft;
     pdfContainer.scrollTop = newScrollTop;
@@ -840,15 +676,14 @@ function updateZoomSmooth() {
 }
 
 /* ==========================================
-   SEARCH FUNCTIONALITY
+   SEARCH
    ========================================== */
 
 let searchTimeout = null;
+let pdfTextContent = [];
 
 function handleSearchInput(e) {
   const query = e.target.value.trim();
-  
-  // Clear previous timeout
   clearTimeout(searchTimeout);
   
   if (query.length < 2) {
@@ -856,58 +691,64 @@ function handleSearchInput(e) {
     return;
   }
   
-  // Debounce search
-  searchTimeout = setTimeout(() => {
-    performSearch(query);
-  }, 300);
+  searchTimeout = setTimeout(() => performSearch(query), 300);
 }
 
 async function indexPDFForSearch() {
-  if (!pdfDocument || !searchWorker) return;
+  if (!pdfDocument) return;
   
-  try {
-    const pages = [];
-    
-    for (let i = 1; i <= pdfDocument.numPages; i++) {
+  pdfTextContent = [];
+  
+  for (let i = 1; i <= pdfDocument.numPages; i++) {
+    try {
       const page = await pdfDocument.getPage(i);
       const textContent = await page.getTextContent();
       const text = textContent.items.map(item => item.str).join(' ');
-      
-      pages.push({
-        pageNumber: i,
-        text: text
-      });
+      pdfTextContent.push({ pageNumber: i, text });
+      page.cleanup();
+    } catch (e) {
+      console.error(`Error indexing page ${i}:`, e);
     }
-    
-    // Send to worker for indexing
-    searchWorker.postMessage({
-      type: 'index',
-      pages: pages
-    });
-    
-  } catch (error) {
-    console.error('Error indexing PDF:', error);
   }
 }
 
 function performSearch(query) {
-  if (!searchWorker) return;
+  const queryLower = query.toLowerCase();
+  searchMatches = [];
   
-  searchWorker.postMessage({
-    type: 'search',
-    query: query
+  pdfTextContent.forEach(page => {
+    const textLower = page.text.toLowerCase();
+    let idx = textLower.indexOf(queryLower);
+    
+    while (idx !== -1) {
+      const start = Math.max(0, idx - 30);
+      const end = Math.min(page.text.length, idx + query.length + 30);
+      const snippet = (start > 0 ? '...' : '') + page.text.slice(start, end) + (end < page.text.length ? '...' : '');
+      
+      searchMatches.push({
+        pageNumber: page.pageNumber,
+        snippet,
+        query
+      });
+      
+      idx = textLower.indexOf(queryLower, idx + 1);
+    }
   });
+  
+  displaySearchResults(searchMatches);
 }
 
 function displaySearchResults(matches) {
+  clearSearchHighlights();
+  
   if (matches.length === 0) {
     searchResults.innerHTML = '<div class="search-no-results">No results found</div>';
     searchResults.classList.remove('hidden');
     return;
   }
   
-  searchResults.innerHTML = matches.map(match => `
-    <div class="search-result-item" data-page="${match.pageNumber}">
+  searchResults.innerHTML = matches.map((match, idx) => `
+    <div class="search-result-item" data-page="${match.pageNumber}" data-index="${idx}">
       <div class="search-result-page">Page ${match.pageNumber}</div>
       <div class="search-result-snippet">${highlightMatch(match.snippet, match.query)}</div>
     </div>
@@ -915,11 +756,10 @@ function displaySearchResults(matches) {
   
   searchResults.classList.remove('hidden');
   
-  // Add click handlers
   searchResults.querySelectorAll('.search-result-item').forEach(item => {
     item.addEventListener('click', () => {
-      const pageNumber = parseInt(item.dataset.page);
-      jumpToPage(pageNumber);
+      const matchIndex = parseInt(item.dataset.index);
+      jumpToMatch(matchIndex);
       searchResults.classList.add('hidden');
     });
   });
@@ -930,10 +770,85 @@ function highlightMatch(text, query) {
   return escapeHtml(text).replace(regex, '<mark>$1</mark>');
 }
 
-function jumpToPage(pageNumber) {
-  const pageElement = pdfCanvasWrapper.querySelector(`[data-page-number="${pageNumber}"]`);
+function jumpToMatch(matchIndex) {
+  const match = searchMatches[matchIndex];
+  if (!match) return;
+  
+  const pageElement = pdfCanvasWrapper.querySelector(`[data-page-number="${match.pageNumber}"]`);
   if (pageElement) {
     pageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => applyHighlightToPage(match.pageNumber, match.query), 250);
+  }
+}
+
+function applyHighlightToPage(pageNumber, query) {
+  const pageElement = pdfCanvasWrapper.querySelector(`[data-page-number="${pageNumber}"]`);
+  if (!pageElement) return;
+  
+  const textLayer = pageElement.querySelector('.textLayer');
+  if (!textLayer) return;
+  
+  clearSearchHighlights();
+  
+  const spans = Array.from(textLayer.querySelectorAll('span'));
+  if (!spans.length) return;
+  
+  let combined = '';
+  const nodes = [];
+  
+  spans.forEach(span => {
+    const node = span.firstChild;
+    const len = node ? node.textContent.length : 0;
+    nodes.push({ node, start: combined.length, end: combined.length + len });
+    combined += node ? node.textContent : '';
+  });
+  
+  const lowerCombined = combined.toLowerCase();
+  const queryLower = query.toLowerCase();
+  const matchIndex = lowerCombined.indexOf(queryLower);
+  
+  if (matchIndex === -1) return;
+  
+  const matchEnd = matchIndex + query.length;
+  const locateOffset = (offset) => nodes.find(n => offset >= n.start && offset <= n.end && n.node);
+  
+  const startNode = locateOffset(matchIndex);
+  const endNode = locateOffset(matchEnd);
+  
+  if (!startNode || !endNode) return;
+  
+  try {
+    const range = document.createRange();
+    range.setStart(startNode.node, matchIndex - startNode.start);
+    range.setEnd(endNode.node, Math.min(matchEnd - endNode.start, endNode.node.textContent.length));
+    
+    const rects = Array.from(range.getClientRects());
+    const layerRect = textLayer.getBoundingClientRect();
+    
+    rects.forEach(rect => {
+      const overlay = document.createElement('div');
+      overlay.className = 'search-highlight';
+      overlay.style.left = `${rect.left - layerRect.left}px`;
+      overlay.style.top = `${rect.top - layerRect.top}px`;
+      overlay.style.width = `${rect.width}px`;
+      overlay.style.height = `${rect.height}px`;
+      textLayer.appendChild(overlay);
+    });
+    
+    range.detach();
+  } catch (e) {
+    console.error('Error highlighting:', e);
+  }
+  
+  if (activeSearchTimeout) clearTimeout(activeSearchTimeout);
+  activeSearchTimeout = setTimeout(clearSearchHighlights, 1700);
+}
+
+function clearSearchHighlights() {
+  pdfCanvasWrapper.querySelectorAll('.search-highlight').forEach(h => h.remove());
+  if (activeSearchTimeout) {
+    clearTimeout(activeSearchTimeout);
+    activeSearchTimeout = null;
   }
 }
 
@@ -944,67 +859,46 @@ function jumpToPage(pageNumber) {
 let isDrawing = false;
 let drawingStartX = 0;
 let drawingStartY = 0;
-let annotationHistory = new Map(); // Store annotations per page as ImageData
-let previewCanvas = null; // For live shape preview
+
+function captureCanvasState(canvas) {
+  const ctx = canvas.getContext('2d');
+  return {
+    data: ctx.getImageData(0, 0, canvas.width, canvas.height),
+    width: canvas.width,
+    height: canvas.height
+  };
+}
+
+function restoreCanvasState(canvas, snapshot) {
+  if (!snapshot) return;
+  const ctx = canvas.getContext('2d');
+  if (snapshot.width !== canvas.width || snapshot.height !== canvas.height) {
+    canvas.width = snapshot.width;
+    canvas.height = snapshot.height;
+  }
+  ctx.putImageData(snapshot.data, 0, 0);
+}
+
+function pushUndoAction(action) {
+  if (!action || !action.before || !action.after) return;
+  redoStack.length = 0;
+  undoStack.push(action);
+}
+
+function getAnnotationCanvasByPage(pageNumber) {
+  return pdfCanvasWrapper.querySelector(`.pdf-page[data-page-number="${pageNumber}"] .annotation-canvas`);
+}
 
 function saveAllAnnotations() {
-  // Save all annotation canvases before they're destroyed
   document.querySelectorAll('.annotation-canvas').forEach(canvas => {
     const pageNum = parseInt(canvas.dataset.pageNumber);
     const ctx = canvas.getContext('2d');
-    // Save the entire canvas as ImageData
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     annotationHistory.set(pageNum, {
-      imageData: imageData,
+      imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
       width: canvas.width,
       height: canvas.height,
       scale: currentScale
     });
-  });
-}
-
-function restoreAllAnnotations() {
-  // Restore annotations to the new canvases after re-rendering
-  document.querySelectorAll('.annotation-canvas').forEach(canvas => {
-    const pageNum = parseInt(canvas.dataset.pageNumber);
-    const savedData = annotationHistory.get(pageNum);
-    
-    if (savedData && savedData.imageData) {
-      const ctx = canvas.getContext('2d');
-      
-      // If scale changed, we need to scale the annotations
-      const scaleRatio = currentScale / savedData.scale;
-      
-      if (Math.abs(scaleRatio - 1.0) < 0.01) {
-        // Same scale - direct restore
-        ctx.putImageData(savedData.imageData, 0, 0);
-      } else {
-        // Scale changed - need to scale the annotations
-        // Create temporary canvas with old size
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = savedData.width;
-        tempCanvas.height = savedData.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        
-        // Put old data on temp canvas
-        tempCtx.putImageData(savedData.imageData, 0, 0);
-        
-        // Draw scaled version to actual canvas
-        ctx.save();
-        ctx.scale(scaleRatio, scaleRatio);
-        ctx.drawImage(tempCanvas, 0, 0);
-        ctx.restore();
-        
-        // Update saved data with new scale
-        const newImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        annotationHistory.set(pageNum, {
-          imageData: newImageData,
-          width: canvas.width,
-          height: canvas.height,
-          scale: currentScale
-        });
-      }
-    }
   });
 }
 
@@ -1013,8 +907,6 @@ function setupAnnotationListeners(canvas) {
   canvas.addEventListener('mousemove', handleAnnotationMove);
   canvas.addEventListener('mouseup', handleAnnotationEnd);
   canvas.addEventListener('mouseleave', handleAnnotationEnd);
-  
-  // Store reference for preview
   canvas.tempImageData = null;
 }
 
@@ -1023,9 +915,7 @@ function handleAnnotationStart(e) {
   
   isDrawing = true;
   const rect = e.target.getBoundingClientRect();
-  
-  // Account for CSS scale transform
-  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  const scaleValue = currentScale / 1.2;
   drawingStartX = (e.clientX - rect.left) / scaleValue;
   drawingStartY = (e.clientY - rect.top) / scaleValue;
   
@@ -1036,12 +926,21 @@ function handleAnnotationStart(e) {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   
-  // Save canvas state for preview
-  if (currentTool === 'rectangle' || currentTool === 'circle' || currentTool === 'arrow') {
+  activeAction = {
+    pageNumber: parseInt(e.target.dataset.pageNumber),
+    before: captureCanvasState(e.target)
+  };
+  
+  if (currentTool === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.lineWidth = currentThickness * 2;
+  }
+  
+  if (['rectangle', 'circle', 'arrow'].includes(currentTool)) {
     e.target.tempImageData = ctx.getImageData(0, 0, e.target.width, e.target.height);
   }
   
-  if (currentTool === 'pen') {
+  if (currentTool === 'pen' || currentTool === 'eraser') {
     ctx.beginPath();
     ctx.moveTo(drawingStartX, drawingStartY);
   }
@@ -1051,31 +950,25 @@ function handleAnnotationMove(e) {
   if (!isDrawing || !currentTool) return;
   
   const rect = e.target.getBoundingClientRect();
-  
-  // Account for CSS scale transform
-  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  const scaleValue = currentScale / 1.2;
   const x = (e.clientX - rect.left) / scaleValue;
   const y = (e.clientY - rect.top) / scaleValue;
   const ctx = e.target.getContext('2d');
   
-  if (currentTool === 'pen') {
-    // Freehand drawing
+  if (currentTool === 'pen' || currentTool === 'eraser') {
     ctx.lineTo(x, y);
     ctx.stroke();
   } else if (currentTool === 'highlight') {
-    // Highlight effect (semi-transparent yellow marker)
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = currentColor;
     const height = Math.abs(y - drawingStartY) || 20;
     ctx.fillRect(drawingStartX, Math.min(drawingStartY, y), x - drawingStartX, height);
     ctx.globalAlpha = 1.0;
-  } else if (currentTool === 'rectangle' || currentTool === 'circle' || currentTool === 'arrow') {
-    // Live preview for shapes - restore previous state first
+  } else if (['rectangle', 'circle', 'arrow'].includes(currentTool)) {
     if (e.target.tempImageData) {
       ctx.putImageData(e.target.tempImageData, 0, 0);
     }
     
-    // Draw preview
     ctx.strokeStyle = currentColor;
     ctx.lineWidth = currentThickness;
     
@@ -1096,15 +989,12 @@ function handleAnnotationEnd(e) {
   if (!isDrawing || !currentTool) return;
   
   const rect = e.target.getBoundingClientRect();
-  
-  // Account for CSS scale transform
-  const scaleValue = currentScale / 1.2; // 1.2 is the base scale
+  const scaleValue = currentScale / 1.2;
   const x = (e.clientX - rect.left) / scaleValue;
   const y = (e.clientY - rect.top) / scaleValue;
   const ctx = e.target.getContext('2d');
   
-  // Restore for final draw
-  if (e.target.tempImageData && (currentTool === 'rectangle' || currentTool === 'circle' || currentTool === 'arrow')) {
+  if (e.target.tempImageData && ['rectangle', 'circle', 'arrow'].includes(currentTool)) {
     ctx.putImageData(e.target.tempImageData, 0, 0);
   }
   
@@ -1116,32 +1006,15 @@ function handleAnnotationEnd(e) {
     case 'rectangle':
       ctx.strokeRect(drawingStartX, drawingStartY, x - drawingStartX, y - drawingStartY);
       break;
-    
     case 'circle':
       const radius = Math.sqrt(Math.pow(x - drawingStartX, 2) + Math.pow(y - drawingStartY, 2));
       ctx.beginPath();
       ctx.arc(drawingStartX, drawingStartY, radius, 0, 2 * Math.PI);
       ctx.stroke();
       break;
-    
     case 'arrow':
       drawArrow(ctx, drawingStartX, drawingStartY, x, y);
       break;
-    
-    case 'underline':
-      ctx.beginPath();
-      ctx.moveTo(drawingStartX, drawingStartY);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      break;
-    
-    case 'strikethrough':
-      ctx.beginPath();
-      ctx.moveTo(drawingStartX, drawingStartY);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      break;
-    
     case 'text':
       const text = prompt('Enter text:');
       if (text) {
@@ -1151,7 +1024,16 @@ function handleAnnotationEnd(e) {
       break;
   }
   
-  // Clear temp data
+  if (currentTool === 'eraser') {
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  
+  if (activeAction) {
+    activeAction.after = captureCanvasState(e.target);
+    pushUndoAction(activeAction);
+    activeAction = null;
+  }
+  
   e.target.tempImageData = null;
   isDrawing = false;
 }
@@ -1160,13 +1042,11 @@ function drawArrow(ctx, fromX, fromY, toX, toY) {
   const headLength = 15;
   const angle = Math.atan2(toY - fromY, toX - fromX);
   
-  // Draw line
   ctx.beginPath();
   ctx.moveTo(fromX, fromY);
   ctx.lineTo(toX, toY);
   ctx.stroke();
   
-  // Draw arrowhead
   ctx.beginPath();
   ctx.moveTo(toX, toY);
   ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
@@ -1178,56 +1058,70 @@ function drawArrow(ctx, fromX, fromY, toX, toY) {
 function handleToolSelect(tool) {
   currentTool = currentTool === tool ? null : tool;
   
-  // Update active state
-  document.querySelectorAll('.annotation-tool').forEach(t => {
-    t.classList.remove('active');
-  });
+  document.querySelectorAll('.annotation-tool').forEach(t => t.classList.remove('active'));
   
   if (currentTool) {
     const toolElement = document.querySelector(`[data-tool="${tool}"]`);
-    if (toolElement) {
-      toolElement.classList.add('active');
-    }
+    if (toolElement) toolElement.classList.add('active');
     
-    // For text-based tools (highlight, underline, strikethrough), allow text selection
     const isTextTool = ['highlight', 'underline', 'strikethrough'].includes(currentTool);
     
     document.querySelectorAll('.annotation-canvas').forEach(canvas => {
-      if (isTextTool) {
-        // Allow text selection by making canvas transparent to pointer events
-        canvas.style.cursor = 'text';
-        canvas.style.pointerEvents = 'none';
-      } else {
-        // For drawing tools, enable canvas interaction
-        canvas.style.cursor = 'crosshair';
-        canvas.style.pointerEvents = 'auto';
-      }
+      canvas.style.cursor = isTextTool ? 'text' : 'crosshair';
+      canvas.style.pointerEvents = isTextTool ? 'none' : 'auto';
     });
     
-    // Text layer should only allow text selection for text-based tools
     document.querySelectorAll('.textLayer').forEach(layer => {
-      if (isTextTool) {
-        // Enable text selection for highlight/underline/strikethrough
-        layer.style.pointerEvents = 'auto';
-      } else {
-        // Disable text selection for drawing tools (rectangle, circle, pen, etc.)
-        layer.style.pointerEvents = 'none';
-      }
+      layer.style.pointerEvents = isTextTool ? 'auto' : 'none';
     });
   } else {
-    // Reset cursor and allow text selection
     document.querySelectorAll('.annotation-canvas').forEach(canvas => {
       canvas.style.cursor = 'default';
       canvas.style.pointerEvents = 'none';
     });
-    
-    // Enable text selection when no tool is active
     document.querySelectorAll('.textLayer').forEach(layer => {
       layer.style.pointerEvents = 'auto';
     });
   }
+}
+
+function handleKeyShortcuts(e) {
+  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
   
-  console.log('Tool selected:', currentTool, 'Color:', currentColor, 'Thickness:', currentThickness);
+  const isMeta = e.metaKey || e.ctrlKey;
+  if (!isMeta) return;
+  
+  const key = e.key.toLowerCase();
+  
+  if (key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+    e.preventDefault();
+    redo();
+  }
+}
+
+function undo() {
+  const action = undoStack.pop();
+  if (!action) return;
+  
+  const canvas = getAnnotationCanvasByPage(action.pageNumber);
+  if (!canvas) return;
+  
+  restoreCanvasState(canvas, action.before);
+  redoStack.push(action);
+}
+
+function redo() {
+  const action = redoStack.pop();
+  if (!action) return;
+  
+  const canvas = getAnnotationCanvasByPage(action.pageNumber);
+  if (!canvas) return;
+  
+  restoreCanvasState(canvas, action.after);
+  undoStack.push(action);
 }
 
 /* ==========================================
@@ -1239,8 +1133,6 @@ function handleTextSelection(e) {
   const selectedText = selection.toString().trim();
   
   if (!selectedText || !currentTool) return;
-  
-  // Only handle highlight, underline, strikethrough for text selection
   if (!['highlight', 'underline', 'strikethrough'].includes(currentTool)) return;
   
   try {
@@ -1249,10 +1141,7 @@ function handleTextSelection(e) {
     
     if (rects.length === 0) return;
     
-    // Find which page contains the selection
-    let targetPage = null;
     let pageContainer = range.startContainer;
-    
     while (pageContainer && !pageContainer.classList?.contains('pdf-page')) {
       pageContainer = pageContainer.parentElement;
     }
@@ -1263,21 +1152,17 @@ function handleTextSelection(e) {
     if (!annotationCanvas) return;
     
     const ctx = annotationCanvas.getContext('2d');
+    const pageNumber = parseInt(annotationCanvas.dataset.pageNumber);
+    const before = captureCanvasState(annotationCanvas);
     
-    // Get the scale factor from the current zoom
-    const scaleValue = currentScale / 1.2; // 1.2 is the base scale
-    
-    // Get canvas position in viewport (already includes scale transform)
+    const scaleValue = currentScale / 1.2;
     const canvasRect = annotationCanvas.getBoundingClientRect();
     
     ctx.strokeStyle = currentColor;
     ctx.fillStyle = currentColor;
     ctx.lineWidth = currentThickness;
     
-    // Draw annotation on each selection rectangle
     Array.from(rects).forEach(rect => {
-      // Convert viewport coordinates to canvas coordinates
-      // Account for the scale transform by dividing by scaleValue
       const x = (rect.left - canvasRect.left) / scaleValue;
       const y = (rect.top - canvasRect.top) / scaleValue;
       const width = rect.width / scaleValue;
@@ -1300,7 +1185,7 @@ function handleTextSelection(e) {
       }
     });
     
-    // Clear selection
+    pushUndoAction({ pageNumber, before, after: captureCanvasState(annotationCanvas) });
     selection.removeAllRanges();
     
   } catch (error) {
@@ -1313,33 +1198,35 @@ function handleTextSelection(e) {
    ========================================== */
 
 async function downloadPDF() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const pdfId = urlParams.get('id');
-  const pdfBase64 = sessionStorage.getItem(`kiosk_pdf_${pdfId}`);
-  
-  if (pdfBase64) {
-    try {
-      // Check if there are any annotations
-      const hasAnnotations = document.querySelectorAll('.annotation-canvas').length > 0;
-      
-      if (hasAnnotations) {
-        // Export PDF with annotations
-        await exportPDFWithAnnotations(pdfBase64);
-      } else {
-        // Download original PDF
-        downloadOriginalPDF(pdfBase64);
-      }
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
-      // Fallback to original
-      downloadOriginalPDF(pdfBase64);
+  try {
+    const hasAnnotations = checkForAnnotations();
+    
+    if (hasAnnotations) {
+      await exportPDFWithAnnotations();
+    } else {
+      downloadOriginalPDF();
     }
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    alert('Failed to download PDF: ' + error.message);
   }
 }
 
-function downloadOriginalPDF(pdfBase64) {
-  const pdfData = base64ToUint8Array(pdfBase64);
-  const blob = new Blob([pdfData], { type: 'application/pdf' });
+function checkForAnnotations() {
+  const canvases = document.querySelectorAll('.annotation-canvas');
+  for (const canvas of canvases) {
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 3; i < imageData.data.length; i += 4) {
+      if (imageData.data[i] > 0) return true;
+    }
+  }
+  return false;
+}
+
+async function downloadOriginalPDF() {
+  const response = await fetch(currentPDFUrl);
+  const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   
   const link = document.createElement('a');
@@ -1347,49 +1234,34 @@ function downloadOriginalPDF(pdfBase64) {
   link.download = currentPDFName;
   link.click();
   
-  // Clean up
   URL.revokeObjectURL(url);
 }
 
-async function exportPDFWithAnnotations(pdfBase64) {
-  // Create a new PDF with annotations burned in
+async function exportPDFWithAnnotations() {
   const pdf = await PDFLib.PDFDocument.create();
   
   for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
     const pageContainer = pdfCanvasWrapper.querySelector(`[data-page-number="${pageNum}"]`);
     if (!pageContainer) continue;
     
-    // Get the PDF canvas and annotation canvas
     const pdfCanvas = pageContainer.querySelector('canvas:not(.annotation-canvas)');
     const annotationCanvas = pageContainer.querySelector('.annotation-canvas');
     
     if (!pdfCanvas) continue;
     
-    // Create a temporary canvas to merge PDF and annotations
     const mergedCanvas = document.createElement('canvas');
     mergedCanvas.width = pdfCanvas.width;
     mergedCanvas.height = pdfCanvas.height;
     const ctx = mergedCanvas.getContext('2d');
     
-    // Draw PDF content
     ctx.drawImage(pdfCanvas, 0, 0);
+    if (annotationCanvas) ctx.drawImage(annotationCanvas, 0, 0);
     
-    // Draw annotations on top
-    if (annotationCanvas) {
-      ctx.drawImage(annotationCanvas, 0, 0);
-    }
-    
-    // Convert to PNG and embed in new PDF
     const imgData = mergedCanvas.toDataURL('image/png');
     const pngImage = await pdf.embedPng(imgData);
     
     const page = pdf.addPage([pdfCanvas.width, pdfCanvas.height]);
-    page.drawImage(pngImage, {
-      x: 0,
-      y: 0,
-      width: pdfCanvas.width,
-      height: pdfCanvas.height,
-    });
+    page.drawImage(pngImage, { x: 0, y: 0, width: pdfCanvas.width, height: pdfCanvas.height });
   }
   
   const pdfBytes = await pdf.save();
@@ -1409,13 +1281,11 @@ async function exportPDFWithAnnotations(pdfBase64) {
    ========================================== */
 
 function updatePDFName(name) {
-  // Truncate if too long
   const maxLength = 30;
   if (name.length > maxLength) {
     const extension = name.substring(name.lastIndexOf('.'));
     const basename = name.substring(0, name.lastIndexOf('.'));
-    const truncated = basename.substring(0, maxLength - extension.length - 3) + '...' + extension;
-    pdfNameEl.textContent = truncated;
+    pdfNameEl.textContent = basename.substring(0, maxLength - extension.length - 3) + '...' + extension;
     pdfNameEl.title = name;
   } else {
     pdfNameEl.textContent = name;
@@ -1426,11 +1296,12 @@ function showError(message) {
   pdfLoading.classList.add('hidden');
   pdfCanvasWrapper.classList.add('hidden');
   pdfError.classList.remove('hidden');
-  pdfError.querySelector('div:last-of-type').textContent = message;
+  const errorDiv = pdfError.querySelector('div:nth-of-type(2)');
+  if (errorDiv) errorDiv.textContent = message;
 }
 
 /* ==========================================
-   UTILITY FUNCTIONS
+   UTILITIES
    ========================================== */
 
 function escapeHtml(text) {
@@ -1441,16 +1312,6 @@ function escapeHtml(text) {
 
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function base64ToUint8Array(base64) {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
 }
 
 /* ==========================================
