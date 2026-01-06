@@ -25,6 +25,12 @@ let searchMatches = [];
 let activeSearchTimeout = null;
 let baseContentHeight = 0;
 
+// Lazy rendering state
+let pageObserver = null;
+let renderedPages = new Set();
+let renderingPages = new Set();
+let pageViewports = new Map();
+
 // DOM Elements
 const pdfNameEl = document.getElementById('pdf-name');
 const searchBar = document.getElementById('search-bar');
@@ -572,7 +578,7 @@ function handleDockScroll() {
    LOAD PDF FROM URL
    ========================================== */
 
-function loadPDFFromURL() {
+async function loadPDFFromURL() {
   // Get PDF ID from query string
   const urlParams = new URLSearchParams(window.location.search);
   const pdfId = urlParams.get('id');
@@ -582,23 +588,58 @@ function loadPDFFromURL() {
     return;
   }
   
-  // Get PDF data from sessionStorage
-  const pdfBase64 = sessionStorage.getItem(`kiosk_pdf_${pdfId}`);
-  const pdfName = sessionStorage.getItem(`kiosk_pdf_name_${pdfId}`);
-  
-  if (!pdfBase64) {
-    showError('PDF not found. Please select a PDF from the home page.');
-    return;
+  try {
+    // Load PDF data from IndexedDB (handles large files)
+    const pdfRecord = await getPDFFromIndexedDB(pdfId);
+    
+    if (!pdfRecord) {
+      showError('PDF not found. Please select a PDF from the home page.');
+      return;
+    }
+    
+    currentPDFName = pdfRecord.name || 'Document.pdf';
+    updatePDFName(currentPDFName);
+    
+    // Load the PDF directly from Uint8Array
+    loadPDF(pdfRecord.data);
+    
+  } catch (error) {
+    console.error('Error loading PDF from storage:', error);
+    showError('Failed to load PDF. Please try opening it again.');
   }
+}
+
+/* ==========================================
+   INDEXEDDB ACCESS
+   ========================================== */
+
+function openKioskDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('KioskPDFStore', 1);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('pdfs')) {
+        db.createObjectStore('pdfs', { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+async function getPDFFromIndexedDB(id) {
+  const db = await openKioskDB();
   
-  currentPDFName = pdfName || 'Document.pdf';
-  updatePDFName(currentPDFName);
-  
-  // Convert base64 back to Uint8Array
-  const pdfData = base64ToUint8Array(pdfBase64);
-  
-  // Load the PDF
-  loadPDF(pdfData);
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['pdfs'], 'readonly');
+    const store = transaction.objectStore('pdfs');
+    const request = store.get(id);
+    
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
 
 /* ==========================================
@@ -611,13 +652,27 @@ async function loadPDF(pdfData) {
     pdfError.classList.add('hidden');
     pdfCanvasWrapper.classList.add('hidden');
     
-    // Load PDF from Uint8Array data
-    const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+    // Cleanup previous document if any
+    if (pdfDocument) {
+      pdfDocument.destroy();
+      pdfDocument = null;
+    }
+    
+    // Load PDF from Uint8Array data with optimizations for large files
+    const loadingTask = pdfjsLib.getDocument({
+      data: pdfData,
+      // Disable auto-fetching for better memory control
+      disableAutoFetch: true,
+      // Disable streaming to prevent memory issues with large files
+      disableStream: true,
+      // Use standard fonts to reduce memory
+      useSystemFonts: true
+    });
     pdfDocument = await loadingTask.promise;
     
     console.log(`PDF loaded: ${pdfDocument.numPages} pages`);
     
-    // Render all pages
+    // Render all pages (now uses lazy loading)
     await renderAllPages();
     
     // Initialize zoom transform
@@ -644,11 +699,21 @@ async function renderAllPages() {
   const scrollPercentage = pdfContainer.scrollHeight > 0 ? scrollPos / pdfContainer.scrollHeight : 0;
   
   pdfCanvasWrapper.innerHTML = '';
+  renderedPages.clear();
+  renderingPages.clear();
+  pageViewports.clear();
   
-  for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-    await renderPage(pageNum);
+  // Cleanup previous observer
+  if (pageObserver) {
+    pageObserver.disconnect();
   }
-
+  
+  // Create placeholders for all pages (fast, no rendering)
+  await createPagePlaceholders();
+  
+  // Setup lazy rendering via IntersectionObserver
+  setupLazyRendering();
+  
   baseContentHeight = pdfCanvasWrapper.scrollHeight;
   const scaleValue = currentScale / 1.2;
   pdfCanvasWrapper.style.height = `${baseContentHeight * scaleValue}px`;
@@ -659,23 +724,73 @@ async function renderAllPages() {
   });
 }
 
-async function renderPage(pageNum) {
+async function createPagePlaceholders() {
+  // Get first page to estimate dimensions (most PDFs have uniform page sizes)
+  const firstPage = await pdfDocument.getPage(1);
+  const baseScale = 1.2;
+  const defaultViewport = firstPage.getViewport({ scale: baseScale, rotation: currentRotation });
+  
+  for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+    const pageContainer = document.createElement('div');
+    pageContainer.className = 'pdf-page pdf-page-placeholder';
+    pageContainer.dataset.pageNumber = pageNum;
+    pageContainer.style.width = defaultViewport.width + 'px';
+    pageContainer.style.height = defaultViewport.height + 'px';
+    
+    // Add loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'page-loading-indicator';
+    loadingIndicator.innerHTML = `<span>Page ${pageNum}</span>`;
+    pageContainer.appendChild(loadingIndicator);
+    
+    pdfCanvasWrapper.appendChild(pageContainer);
+  }
+  
+  // Cleanup first page reference
+  firstPage.cleanup();
+}
+
+function setupLazyRendering() {
+  // Use IntersectionObserver to detect visible pages
+  pageObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const pageNum = parseInt(entry.target.dataset.pageNumber);
+      if (entry.isIntersecting && !renderedPages.has(pageNum) && !renderingPages.has(pageNum)) {
+        renderPageLazy(pageNum, entry.target);
+      }
+    });
+  }, {
+    root: pdfContainer,
+    rootMargin: '200px 0px', // Pre-render pages 200px before they enter viewport
+    threshold: 0
+  });
+  
+  // Observe all page placeholders
+  document.querySelectorAll('.pdf-page').forEach(page => {
+    pageObserver.observe(page);
+  });
+}
+
+async function renderPageLazy(pageNum, pageContainer) {
+  if (renderedPages.has(pageNum) || renderingPages.has(pageNum)) return;
+  
+  renderingPages.add(pageNum);
+  
   try {
     const page = await pdfDocument.getPage(pageNum);
     
-    // Create container for this page
-    const pageContainer = document.createElement('div');
-    pageContainer.className = 'pdf-page';
-    pageContainer.dataset.pageNumber = pageNum;
+    const baseScale = 1.2;
+    const viewport = page.getViewport({ scale: baseScale, rotation: currentRotation });
+    pageViewports.set(pageNum, viewport);
+    
+    // Update container size to actual page dimensions
+    pageContainer.style.width = viewport.width + 'px';
+    pageContainer.style.height = viewport.height + 'px';
     
     // Create canvas for PDF
     const canvas = document.createElement('canvas');
     canvas.className = 'pdf-canvas';
     const context = canvas.getContext('2d');
-    
-    // Always render at base scale (1.2) - CSS transform handles zoom
-    const baseScale = 1.2;
-    const viewport = page.getViewport({ scale: baseScale, rotation: currentRotation });
     
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -694,7 +809,7 @@ async function renderPage(pageNum) {
     textLayerDiv.className = 'textLayer';
     textLayerDiv.style.width = viewport.width + 'px';
     textLayerDiv.style.height = viewport.height + 'px';
-    textLayerDiv.style.pointerEvents = 'auto'; // Ensure text selection is enabled by default
+    textLayerDiv.style.pointerEvents = 'auto';
     
     // Render text layer
     const textContent = await page.getTextContent();
@@ -719,13 +834,59 @@ async function renderPage(pageNum) {
     // Add mouse event listeners for annotations
     setupAnnotationListeners(annotationCanvas);
     
+    // Clear placeholder content and add rendered content
+    pageContainer.innerHTML = '';
+    pageContainer.classList.remove('pdf-page-placeholder');
     pageContainer.appendChild(canvas);
     pageContainer.appendChild(textLayerDiv);
     pageContainer.appendChild(annotationCanvas);
-    pdfCanvasWrapper.appendChild(pageContainer);
+    
+    // Restore any saved annotations for this page
+    restorePageAnnotations(pageNum, annotationCanvas);
+    
+    // Cleanup page object to free memory
+    page.cleanup();
+    
+    renderedPages.add(pageNum);
+    renderingPages.delete(pageNum);
     
   } catch (error) {
     console.error(`Error rendering page ${pageNum}:`, error);
+    renderingPages.delete(pageNum);
+    
+    // Show error state on the page
+    pageContainer.innerHTML = `<div class="page-error">Failed to load page ${pageNum}</div>`;
+    pageContainer.classList.add('pdf-page-error');
+  }
+}
+
+function restorePageAnnotations(pageNum, canvas) {
+  const savedData = annotationHistory.get(pageNum);
+  if (savedData && savedData.imageData) {
+    const ctx = canvas.getContext('2d');
+    const scaleRatio = currentScale / savedData.scale;
+    
+    if (Math.abs(scaleRatio - 1.0) < 0.01) {
+      ctx.putImageData(savedData.imageData, 0, 0);
+    } else {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = savedData.width;
+      tempCanvas.height = savedData.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.putImageData(savedData.imageData, 0, 0);
+      ctx.save();
+      ctx.scale(scaleRatio, scaleRatio);
+      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.restore();
+    }
+  }
+}
+
+// Keep for compatibility but no longer used for initial render
+async function renderPage(pageNum) {
+  const pageContainer = pdfCanvasWrapper.querySelector(`[data-page-number="${pageNum}"]`);
+  if (pageContainer) {
+    await renderPageLazy(pageNum, pageContainer);
   }
 }
 
@@ -772,6 +933,8 @@ function fitToPage() {
 
 function rotatePDF() {
   currentRotation = (currentRotation + 90) % 360;
+  // Save annotations before re-rendering
+  saveAllAnnotations();
   // Rotation requires re-rendering
   renderAllPages();
 }
@@ -859,6 +1022,7 @@ async function indexPDFForSearch() {
   
   try {
     const pages = [];
+    const batchSize = 10; // Process pages in batches to avoid blocking
     
     for (let i = 1; i <= pdfDocument.numPages; i++) {
       const page = await pdfDocument.getPage(i);
@@ -869,6 +1033,14 @@ async function indexPDFForSearch() {
         pageNumber: i,
         text: text
       });
+      
+      // Cleanup page to free memory
+      page.cleanup();
+      
+      // Yield to event loop every batch to prevent UI blocking
+      if (i % batchSize === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
     }
     
     // Send to worker for indexing
@@ -1465,32 +1637,49 @@ function handleTextSelection(e) {
    ========================================== */
 
 async function downloadPDF() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const pdfId = urlParams.get('id');
-  const pdfBase64 = sessionStorage.getItem(`kiosk_pdf_${pdfId}`);
-  
-  if (pdfBase64) {
-    try {
-      // Check if there are any annotations
-      const hasAnnotations = document.querySelectorAll('.annotation-canvas').length > 0;
-      
-      if (hasAnnotations) {
-        // Export PDF with annotations
-        await exportPDFWithAnnotations(pdfBase64);
-      } else {
-        // Download original PDF
-        downloadOriginalPDF(pdfBase64);
-      }
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
-      // Fallback to original
-      downloadOriginalPDF(pdfBase64);
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pdfId = urlParams.get('id');
+    
+    // Get PDF from IndexedDB
+    const pdfRecord = await getPDFFromIndexedDB(pdfId);
+    
+    if (!pdfRecord || !pdfRecord.data) {
+      alert('PDF data not found. Please reload the PDF.');
+      return;
     }
+    
+    // Check if there are any annotations
+    const hasAnnotations = checkForAnnotations();
+    
+    if (hasAnnotations) {
+      // Export PDF with annotations
+      await exportPDFWithAnnotations();
+    } else {
+      // Download original PDF
+      downloadOriginalPDF(pdfRecord.data);
+    }
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    alert('Failed to download PDF: ' + error.message);
   }
 }
 
-function downloadOriginalPDF(pdfBase64) {
-  const pdfData = base64ToUint8Array(pdfBase64);
+function checkForAnnotations() {
+  // Check if any annotation canvas has drawn content
+  const canvases = document.querySelectorAll('.annotation-canvas');
+  for (const canvas of canvases) {
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // Check if canvas has any non-transparent pixels
+    for (let i = 3; i < imageData.data.length; i += 4) {
+      if (imageData.data[i] > 0) return true;
+    }
+  }
+  return false;
+}
+
+function downloadOriginalPDF(pdfData) {
   const blob = new Blob([pdfData], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
   
@@ -1503,7 +1692,7 @@ function downloadOriginalPDF(pdfBase64) {
   URL.revokeObjectURL(url);
 }
 
-async function exportPDFWithAnnotations(pdfBase64) {
+async function exportPDFWithAnnotations() {
   // Create a new PDF with annotations burned in
   const pdf = await PDFLib.PDFDocument.create();
   

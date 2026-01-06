@@ -202,15 +202,29 @@ async function openPDF(file) {
     
     // Convert file to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
+    const pdfData = new Uint8Array(arrayBuffer);
     
-    // Convert ArrayBuffer to base64 string for storage
-    const base64 = arrayBufferToBase64(arrayBuffer);
+    // Check file size - warn if very large
+    const fileSizeMB = file.size / (1024 * 1024);
+    if (fileSizeMB > 100) {
+      console.warn(`Large PDF detected: ${fileSizeMB.toFixed(1)}MB`);
+    }
     
-    // Store in sessionStorage (will be available in viewer page)
-    sessionStorage.setItem(`kiosk_pdf_${id}`, base64);
-    sessionStorage.setItem(`kiosk_pdf_name_${id}`, file.name);
+    // Store PDF data using IndexedDB (handles large files reliably)
+    await storePDFInIndexedDB(id, pdfData, file.name);
     
-    // Update history in localStorage
+    // Store lightweight metadata in sessionStorage for quick access
+    try {
+      sessionStorage.setItem(`kiosk_pdf_meta_${id}`, JSON.stringify({
+        name: file.name,
+        size: file.size,
+        timestamp: Date.now()
+      }));
+    } catch (e) {
+      console.warn('Could not store PDF metadata in sessionStorage:', e);
+    }
+    
+    // Update history (metadata only)
     updateRecentPDFs({
       id: id,
       name: file.name,
@@ -222,8 +236,54 @@ async function openPDF(file) {
     window.location.href = `viewer.html?id=${id}`;
   } catch (error) {
     console.error('Error opening PDF:', error);
-    alert('Failed to open PDF. Please try again.');
+    alert('Failed to open PDF: ' + error.message);
   }
+}
+
+/* ==========================================
+   INDEXEDDB STORAGE FOR LARGE PDFS
+   ========================================== */
+
+function openKioskDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('KioskPDFStore', 1);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('pdfs')) {
+        db.createObjectStore('pdfs', { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+async function storePDFInIndexedDB(id, data, name) {
+  const db = await openKioskDB();
+  
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['pdfs'], 'readwrite');
+    const store = transaction.objectStore('pdfs');
+    
+    // Clear old PDFs to prevent storage bloat (keep only current)
+    const clearRequest = store.clear();
+    
+    clearRequest.onsuccess = () => {
+      const putRequest = store.put({
+        id: id,
+        data: data,
+        name: name,
+        timestamp: Date.now()
+      });
+      
+      putRequest.onsuccess = () => resolve();
+      putRequest.onerror = () => reject(putRequest.error);
+    };
+    
+    clearRequest.onerror = () => reject(clearRequest.error);
+  });
 }
 
 function updateRecentPDFs(newPDF) {
