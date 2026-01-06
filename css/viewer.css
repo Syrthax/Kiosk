@@ -460,6 +460,21 @@ body[data-theme="auto"][data-system-theme="night"] .pdf-page .pdf-canvas {
   background: rgba(0, 102, 255, 0.3);
 }
 
+.search-highlight {
+  position: absolute;
+  background: rgba(255, 213, 0, 0.45);
+  border-radius: 2px;
+  pointer-events: none;
+  animation: searchHighlightFade 1.6s ease-out forwards;
+  z-index: 4;
+}
+
+@keyframes searchHighlightFade {
+  0% { opacity: 0.9; }
+  70% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
 /* Annotation canvas */
 .annotation-canvas {
   position: absolute;

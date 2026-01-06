@@ -18,6 +18,12 @@ let currentColor = '#ffc107';
 let currentThickness = 3;
 let currentTheme = 'light';
 let systemThemeMedia = null;
+let undoStack = [];
+let redoStack = [];
+let activeAction = null;
+let searchMatches = [];
+let activeSearchTimeout = null;
+let baseContentHeight = 0;
 
 // DOM Elements
 const pdfNameEl = document.getElementById('pdf-name');
@@ -81,6 +87,15 @@ function setupEventListeners() {
   
   // Search
   searchBar.addEventListener('input', handleSearchInput);
+  searchBar.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (searchMatches.length > 0) {
+        jumpToMatch(0);
+        searchResults.classList.add('hidden');
+      }
+    }
+  });
   searchBar.addEventListener('focus', () => {
     if (searchBar.value.trim()) {
       searchResults.classList.remove('hidden');
@@ -93,6 +108,10 @@ function setupEventListeners() {
       searchResults.classList.add('hidden');
     }
   });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', handleKeyShortcuts);
+  pdfContainer.addEventListener('scroll', clearSearchHighlights);
   
   // Annotation tools
   document.querySelectorAll('.annotation-tool').forEach(tool => {
@@ -629,6 +648,10 @@ async function renderAllPages() {
   for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
     await renderPage(pageNum);
   }
+
+  baseContentHeight = pdfCanvasWrapper.scrollHeight;
+  const scaleValue = currentScale / 1.2;
+  pdfCanvasWrapper.style.height = `${baseContentHeight * scaleValue}px`;
   
   // Restore scroll position
   requestAnimationFrame(() => {
@@ -760,10 +783,9 @@ function updateZoom() {
   const scaleValue = currentScale / 1.2; // 1.2 is the base scale
   pdfCanvasWrapper.style.transform = `scale(${scaleValue})`;
   pdfCanvasWrapper.style.transformOrigin = 'top center';
-  
-  // Adjust container to account for scaled content size
-  const scaledHeight = pdfCanvasWrapper.scrollHeight * scaleValue;
-  pdfCanvasWrapper.style.minHeight = `${scaledHeight}px`;
+  if (baseContentHeight > 0) {
+    pdfCanvasWrapper.style.height = `${baseContentHeight * scaleValue}px`;
+  }
 }
 
 let zoomTimeout = null;
@@ -789,6 +811,9 @@ function updateZoomSmooth() {
   pdfCanvasWrapper.style.transform = `scale(${scaleValue})`;
   pdfCanvasWrapper.style.transformOrigin = 'top center';
   pdfCanvasWrapper.style.transition = 'transform 0.15s ease-out';
+  if (baseContentHeight > 0) {
+    pdfCanvasWrapper.style.height = `${baseContentHeight * scaleValue}px`;
+  }
   
   // Calculate new scroll position to keep zoom point centered
   const scaleDelta = currentScale / previousScale;
@@ -867,14 +892,17 @@ function performSearch(query) {
 }
 
 function displaySearchResults(matches) {
+  searchMatches = matches;
+  clearSearchHighlights();
+
   if (matches.length === 0) {
     searchResults.innerHTML = '<div class="search-no-results">No results found</div>';
     searchResults.classList.remove('hidden');
     return;
   }
   
-  searchResults.innerHTML = matches.map(match => `
-    <div class="search-result-item" data-page="${match.pageNumber}">
+  searchResults.innerHTML = matches.map((match, idx) => `
+    <div class="search-result-item" data-page="${match.pageNumber}" data-index="${idx}">
       <div class="search-result-page">Page ${match.pageNumber}</div>
       <div class="search-result-snippet">${highlightMatch(match.snippet, match.query)}</div>
     </div>
@@ -885,8 +913,8 @@ function displaySearchResults(matches) {
   // Add click handlers
   searchResults.querySelectorAll('.search-result-item').forEach(item => {
     item.addEventListener('click', () => {
-      const pageNumber = parseInt(item.dataset.page);
-      jumpToPage(pageNumber);
+      const matchIndex = parseInt(item.dataset.index);
+      jumpToMatch(matchIndex);
       searchResults.classList.add('hidden');
     });
   });
@@ -904,6 +932,71 @@ function jumpToPage(pageNumber) {
   }
 }
 
+function jumpToMatch(matchIndex) {
+  const match = searchMatches[matchIndex];
+  if (!match) return;
+  const pageNumber = match.pageNumber;
+  const pageElement = pdfCanvasWrapper.querySelector(`[data-page-number="${pageNumber}"]`);
+  if (pageElement) {
+    pageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => applyHighlightToPage(pageNumber, match.query), 250);
+  }
+}
+
+function applyHighlightToPage(pageNumber, query) {
+  const pageElement = pdfCanvasWrapper.querySelector(`[data-page-number="${pageNumber}"]`);
+  if (!pageElement) return;
+  const textLayer = pageElement.querySelector('.textLayer');
+  if (!textLayer) return;
+  clearSearchHighlights();
+  const spans = Array.from(textLayer.querySelectorAll('span'));
+  if (!spans.length) return;
+  let combined = '';
+  const nodes = [];
+  spans.forEach(span => {
+    const node = span.firstChild;
+    const len = node ? node.textContent.length : 0;
+    nodes.push({ node, start: combined.length, end: combined.length + len });
+    combined += node ? node.textContent : '';
+  });
+  const lowerCombined = combined.toLowerCase();
+  const queryLower = query.toLowerCase();
+  const matchIndex = lowerCombined.indexOf(queryLower);
+  if (matchIndex === -1) return;
+  const matchEnd = matchIndex + query.length;
+  const locateOffset = (offset) => nodes.find(n => offset >= n.start && offset <= n.end && n.node);
+  const startNode = locateOffset(matchIndex);
+  const endNode = locateOffset(matchEnd);
+  if (!startNode || !endNode) return;
+  const range = document.createRange();
+  range.setStart(startNode.node, matchIndex - startNode.start);
+  const endOffset = Math.min(matchEnd - endNode.start, endNode.node.textContent.length);
+  range.setEnd(endNode.node, endOffset);
+  const rects = Array.from(range.getClientRects());
+  const layerRect = textLayer.getBoundingClientRect();
+  rects.forEach(rect => {
+    const overlay = document.createElement('div');
+    overlay.className = 'search-highlight';
+    overlay.style.left = `${rect.left - layerRect.left}px`;
+    overlay.style.top = `${rect.top - layerRect.top}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+    textLayer.appendChild(overlay);
+  });
+  range.detach();
+  if (activeSearchTimeout) clearTimeout(activeSearchTimeout);
+  activeSearchTimeout = setTimeout(clearSearchHighlights, 1700);
+}
+
+function clearSearchHighlights() {
+  const highlights = pdfCanvasWrapper.querySelectorAll('.search-highlight');
+  highlights.forEach(h => h.remove());
+  if (activeSearchTimeout) {
+    clearTimeout(activeSearchTimeout);
+    activeSearchTimeout = null;
+  }
+}
+
 /* ==========================================
    ANNOTATION TOOLS
    ========================================== */
@@ -913,6 +1006,39 @@ let drawingStartX = 0;
 let drawingStartY = 0;
 let annotationHistory = new Map(); // Store annotations per page as ImageData
 let previewCanvas = null; // For live shape preview
+
+function captureCanvasState(canvas) {
+  const ctx = canvas.getContext('2d');
+  return {
+    data: ctx.getImageData(0, 0, canvas.width, canvas.height),
+    width: canvas.width,
+    height: canvas.height
+  };
+}
+
+function restoreCanvasState(canvas, snapshot) {
+  if (!snapshot) return;
+  const ctx = canvas.getContext('2d');
+  if (snapshot.width !== canvas.width || snapshot.height !== canvas.height) {
+    canvas.width = snapshot.width;
+    canvas.height = snapshot.height;
+  }
+  ctx.putImageData(snapshot.data, 0, 0);
+}
+
+function pushUndoAction(action) {
+  if (!action || !action.before || !action.after) return;
+  redoStack.length = 0;
+  undoStack.push({
+    pageNumber: action.pageNumber,
+    before: action.before,
+    after: action.after
+  });
+}
+
+function getAnnotationCanvasByPage(pageNumber) {
+  return pdfCanvasWrapper.querySelector(`.pdf-page[data-page-number="${pageNumber}"] .annotation-canvas`);
+}
 
 function saveAllAnnotations() {
   // Save all annotation canvases before they're destroyed
@@ -1002,13 +1128,24 @@ function handleAnnotationStart(e) {
   ctx.lineWidth = currentThickness;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+
+   // Snapshot before any modification for undo/redo
+  activeAction = {
+    pageNumber: parseInt(e.target.dataset.pageNumber),
+    before: captureCanvasState(e.target)
+  };
+  
+  if (currentTool === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.lineWidth = currentThickness * 2;
+  }
   
   // Save canvas state for preview
   if (currentTool === 'rectangle' || currentTool === 'circle' || currentTool === 'arrow') {
     e.target.tempImageData = ctx.getImageData(0, 0, e.target.width, e.target.height);
   }
   
-  if (currentTool === 'pen') {
+  if (currentTool === 'pen' || currentTool === 'eraser') {
     ctx.beginPath();
     ctx.moveTo(drawingStartX, drawingStartY);
   }
@@ -1025,7 +1162,7 @@ function handleAnnotationMove(e) {
   const y = (e.clientY - rect.top) / scaleValue;
   const ctx = e.target.getContext('2d');
   
-  if (currentTool === 'pen') {
+  if (currentTool === 'pen' || currentTool === 'eraser') {
     // Freehand drawing
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -1118,6 +1255,16 @@ function handleAnnotationEnd(e) {
       break;
   }
   
+  if (currentTool === 'eraser') {
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  if (activeAction) {
+    activeAction.after = captureCanvasState(e.target);
+    pushUndoAction(activeAction);
+    activeAction = null;
+  }
+  
   // Clear temp data
   e.target.tempImageData = null;
   isDrawing = false;
@@ -1197,6 +1344,39 @@ function handleToolSelect(tool) {
   console.log('Tool selected:', currentTool, 'Color:', currentColor, 'Thickness:', currentThickness);
 }
 
+function handleKeyShortcuts(e) {
+  const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable;
+  if (isInput) return;
+  const isMeta = e.metaKey || e.ctrlKey;
+  if (!isMeta) return;
+  const key = e.key.toLowerCase();
+  if (key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+    e.preventDefault();
+    redo();
+  }
+}
+
+function undo() {
+  const action = undoStack.pop();
+  if (!action) return;
+  const canvas = getAnnotationCanvasByPage(action.pageNumber);
+  if (!canvas) return;
+  restoreCanvasState(canvas, action.before);
+  redoStack.push(action);
+}
+
+function redo() {
+  const action = redoStack.pop();
+  if (!action) return;
+  const canvas = getAnnotationCanvasByPage(action.pageNumber);
+  if (!canvas) return;
+  restoreCanvasState(canvas, action.after);
+  undoStack.push(action);
+}
+
 /* ==========================================
    TEXT SELECTION ANNOTATION
    ========================================== */
@@ -1230,6 +1410,8 @@ function handleTextSelection(e) {
     if (!annotationCanvas) return;
     
     const ctx = annotationCanvas.getContext('2d');
+    const pageNumber = parseInt(annotationCanvas.dataset.pageNumber);
+    const before = captureCanvasState(annotationCanvas);
     
     // Get the scale factor from the current zoom
     const scaleValue = currentScale / 1.2; // 1.2 is the base scale
@@ -1266,6 +1448,9 @@ function handleTextSelection(e) {
         ctx.stroke();
       }
     });
+    
+    const after = captureCanvasState(annotationCanvas);
+    pushUndoAction({ pageNumber, before, after });
     
     // Clear selection
     selection.removeAllRanges();
