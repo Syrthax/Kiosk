@@ -15,6 +15,15 @@
       
       <!-- LEFT SECTION: LOGO & BRAND -->
       <div class="brand-section">
+        <button class="icon-button" id="thumbnail-toggle" aria-label="Toggle thumbnails" title="Page Thumbnails">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+        </button>
+        <div class="toolbar-divider"></div>
         <img src="../icons/icon-32.png" alt="Kiosk Logo" class="brand-logo">
         <span class="brand-name">Kiosk</span>
       </div>
@@ -87,6 +96,13 @@
 
         <!-- PDF Tools -->
         <div class="toolbar-group">
+          <button class="icon-button" id="save-pdf" aria-label="Save" title="Save PDF with Annotations">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+          </button>
           <button class="icon-button" id="download" aria-label="Download" title="Download PDF">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/>
@@ -140,6 +156,18 @@
 
     <!-- MAIN VIEWING AREA -->
     <main class="viewer-main">
+      
+      <!-- Thumbnail Sidebar -->
+      <aside class="thumbnail-sidebar" id="thumbnail-sidebar">
+        <div class="thumbnail-sidebar-header">
+          <span class="thumbnail-sidebar-title">Pages</span>
+          <span class="thumbnail-page-count" id="thumbnail-page-count"></span>
+        </div>
+        <div class="thumbnail-list" id="thumbnail-list">
+          <!-- Thumbnails will be rendered here -->
+        </div>
+      </aside>
+
       <!-- PDF Container -->
       <div class="pdf-container" id="pdf-container">
         <div class="pdf-loading" id="pdf-loading">

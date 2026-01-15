@@ -122,6 +122,9 @@ async function handleMessage(message, sender) {
     case 'OPEN_PDF_URL':
       return await openPDFInViewer(payload.url, payload.filename);
     
+    case 'OPEN_PDF_FILE':
+      return await openPDFFileInViewer(payload.fileData, payload.filename);
+    
     case 'GET_RECENT_PDFS':
       return await getRecentPDFs();
     
@@ -166,6 +169,41 @@ async function openPDFInViewer(url, filename) {
     
     return { success: true, tabId: tab.id };
   } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Open a PDF file (from base64 data) in the viewer
+ * Creates a blob URL and opens the viewer with it
+ */
+async function openPDFFileInViewer(base64Data, filename) {
+  try {
+    // Convert base64 to blob URL
+    const blob = base64ToBlob(base64Data, 'application/pdf');
+    const blobUrl = URL.createObjectURL(blob);
+    
+    // Store the blob URL in session storage so viewer can access it
+    // Note: Blob URLs created in service worker can't be accessed from other pages
+    // So we need to pass the base64 data directly via a different mechanism
+    
+    // For now, we'll use a data URL approach for small files
+    // or store in chrome.storage.session for larger files
+    const dataUrl = `data:application/pdf;base64,${base64Data}`;
+    
+    let viewerUrl = `${getViewerURL()}?dataUrl=${encodeURIComponent(dataUrl)}&name=${encodeURIComponent(filename || 'document.pdf')}`;
+    
+    const tab = await chrome.tabs.create({ url: viewerUrl });
+    
+    await addRecentPDF({
+      name: filename || 'document.pdf',
+      timestamp: Date.now(),
+      isLocal: true
+    });
+    
+    return { success: true, tabId: tab.id };
+  } catch (error) {
+    console.error('[Kiosk] Error opening PDF file:', error);
     return { success: false, error: error.message };
   }
 }
