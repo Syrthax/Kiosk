@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kiosk</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <div id="app">
+      <!-- Toolbar -->
+      <header id="toolbar">
+        <div class="toolbar-left">
+          <button id="toggle-sidebar" class="toolbar-btn" title="Toggle Sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          </button>
+          <button id="open-file" class="toolbar-btn" title="Open File (Cmd+O)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="toolbar-center">
+          <!-- Navigation -->
+          <button id="prev-page" class="toolbar-btn" title="Previous Page">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <span id="page-counter" class="page-counter">0 / 0</span>
+          <button id="next-page" class="toolbar-btn" title="Next Page">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+
+          <div class="toolbar-separator"></div>
+
+          <!-- Zoom -->
+          <button id="zoom-out" class="toolbar-btn" title="Zoom Out (Cmd+-)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+          </button>
+          <span id="zoom-label" class="zoom-label">100%</span>
+          <button id="zoom-in" class="toolbar-btn" title="Zoom In (Cmd++)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              <line x1="11" y1="8" x2="11" y2="14"></line>
+              <line x1="8" y1="11" x2="14" y2="11"></line>
+            </svg>
+          </button>
+          <button id="zoom-fit-width" class="toolbar-btn" title="Fit Width">W</button>
+          <button id="zoom-fit-page" class="toolbar-btn" title="Fit Page">P</button>
+        </div>
+
+        <div class="toolbar-right">
+          <!-- Display Mode -->
+          <div id="display-mode-container" class="display-mode-container">
+            <button class="toolbar-btn display-mode-btn" title="Display Mode">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+              </svg>
+            </button>
+            <div class="display-mode-dropdown">
+              <button class="display-mode-option" data-mode="light">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"></circle>
+                  <line x1="12" y1="1" x2="12" y2="3"></line>
+                  <line x1="12" y1="21" x2="12" y2="23"></line>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                  <line x1="1" y1="12" x2="3" y2="12"></line>
+                  <line x1="21" y1="12" x2="23" y2="12"></line>
+                </svg>
+                <span>Light</span>
+              </button>
+              <button class="display-mode-option" data-mode="dark">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+                <span>Dark</span>
+              </button>
+              <button class="display-mode-option" data-mode="night">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+                <span>Night (Inverted)</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="toolbar-separator"></div>
+          
+          <!-- Search -->
+          <div class="search-container">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="search-input" placeholder="Search..." />
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <div id="main-content">
+        <!-- Sidebar (Thumbnails) -->
+        <aside id="sidebar">
+          <div id="thumbnails-container"></div>
+        </aside>
+
+        <!-- Viewer -->
+        <main id="viewer-container">
+          <div id="pages-container"></div>
+
+          <!-- Search Results Dropdown -->
+          <div id="search-results" class="search-results"></div>
+
+          <!-- Welcome Screen -->
+          <div id="welcome-screen" class="welcome-screen">
+            <div id="welcome-drop-zone" class="welcome-drop-zone">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+              <h2>Drop a PDF here</h2>
+              <p>or</p>
+              <button id="welcome-browse" class="welcome-browse-btn">Browse Files</button>
+            </div>
+          </div>
+
+          <!-- Loading Overlay -->
+          <div id="loading-overlay" class="loading-overlay" style="display: none;">
+            <div class="loading-spinner"></div>
+            <span>Loading...</span>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

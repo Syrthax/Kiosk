@@ -1,102 +1,284 @@
-# Kiosk – High-Performance PDF Reader
+# Kiosk – Modern PDF Reader
 
-A modern, high-performance PDF reader built with vanilla JavaScript, HTML, and CSS. Works both as a lightweight web app (GitHub Pages friendly) and as a Chrome extension—no build tools or frameworks required.
+<p align="center">
+  <img src="Desktop%20(Tauri)/Kiosk/src-tauri/icons/icon.png" width="128" height="128" alt="Kiosk Logo">
+</p>
 
-## Features (Web App)
-- Home page (`index.html`): drag-and-drop or click-to-upload, recent history via localStorage, clean UI
-- Reader page (`viewer.html`) powered by PDF.js with:
-  - Search via Web Worker (non-blocking)
-  - Zoom (in/out/fit width/fit page) using CSS transform + debounced high-quality re-render
-  - Rotate, download
-  - Annotation tools (highlight, underline, strikethrough, draw, shapes, text) with color & thickness controls
-  - Thumbnail sidebar with page navigation and active-page highlighting
-  - Focus-window rendering (current ±2 pages) for smooth scrolling
-  - HiDPI-aware rendering (devicePixelRatio) for crisp output
+<p align="center">
+  <strong>A high-performance, privacy-focused PDF reader</strong><br>
+  Available as a native macOS app, Chrome extension, and web app
+</p>
 
-## Chrome Extension
-- PDF interception and open-in-Kiosk via background service worker
-- Drag & drop and popup file picker supported (including `file://` when permitted)
-- Thumbnail sidebar, focus-based rendering, and HiDPI handling mirrored from the web app
-- Save button persists annotations to Chrome local storage; annotations restore on reopen
-- Handles PDFs passed as URLs or data URLs from the popup
-
-## Project Structure
-```
-/kiosk
-├── index.html              # Home page (PDF selection & history)
-├── viewer.html             # Reader page (PDF viewer & annotations)
-├── README.md               # This file
-├── css/
-│   ├── common.css          # Shared styles
-│   ├── home.css            # Home page styles
-│   └── viewer.css          # Viewer page styles
-└── js/
-    ├── home.js             # Home page logic
-    ├── viewer.js           # Viewer page logic
-    └── pdfSearchWorker.js  # Web worker for search
-```
-
-## How It Works (Web App)
-1. User selects a PDF on the home page (click or drag-and-drop)
-2. Home page creates an object URL, stores metadata in localStorage (for history), and redirects to `viewer.html?id=<uniqueId>`
-3. Viewer reads the ID, fetches the PDF URL from sessionStorage, renders with PDF.js, and indexes text via Web Worker for search
-
-### localStorage Usage
-- Key: `kiosk_recent_pdfs`
-- Value: Array of recent PDF metadata `{ id, name, size, lastOpened }`, capped to the 10 most recent
-
-### Search Implementation
-- Debounced input (300ms), case-insensitive
-- Web Worker indexing to avoid UI jank
-- Results with highlighted snippets; click to jump to page
-- Limited to 50 matches for performance
-
-## Technology Stack
-- HTML5, CSS3 (Grid/Flex), Vanilla JavaScript
-- PDF.js (CDN or bundled for extension)
-- Web Workers API
-- localStorage / sessionStorage
-
-## Browser Compatibility
-- Modern browsers supporting ES6, Web Workers, Canvas, and PDF.js (Chrome, Firefox, Safari, Edge)
-
-## Getting Started
-### Local Development
-1. Clone the repo
-2. Open `index.html` directly, or run a simple server:
-   ```bash
-   # Python 3
-   python -m http.server 8000
-   # Node.js
-   npx http-server
-   ```
-3. Navigate to `http://localhost:8000`
-
-### GitHub Pages
-1. Push the repository to GitHub
-2. In Settings → Pages, select the branch (usually `main`) and root folder
-3. App will be available at `https://username.github.io/kiosk`
-
-## Future Enhancements
-- IndexedDB for storing PDFs (true "recent" reopen without reselecting)
-- Google Sign-In for authenticated workflows
-- PDF security (password-protected files)
-- Offline support via service worker (web app)
-- Cloud sync for cross-device access
-- Collaborative annotations
-
-## Notes
-- Web app stores recent metadata only; reopening a PDF requires reselecting the file (until IndexedDB is added)
-- Extension supports annotation persistence via Chrome local storage (Save button)
-- For `file://` support in extension, enable "Allow access to file URLs" in Chrome extension settings
-
-## Recent Updates (Jan 2026)
-- Thumbnail navigation sidebar with active-page highlighting
-- Focus-window rendering (current ±2 pages) with HiDPI-aware canvases
-- Zoom via CSS transform + debounced high-quality re-render
-- Annotation persistence across zoom/reload; save/load backed by Chrome storage in the extension
-- Save button with inline notifications (extension)
-- File upload handling from popup to viewer via service worker message passing
+<p align="center">
+  <a href="#-native-macos-app">Desktop App</a> •
+  <a href="#-chrome-extension">Extension</a> •
+  <a href="#-web-app">Web App</a> •
+  <a href="#-installation">Installation</a>
+</p>
 
 ---
-Built with ❤️ for a native app-like PDF reading experience in the browser and Chrome.
+
+## ✨ Features
+
+### Core Features (All Platforms)
+- 📄 **High-quality PDF rendering** with native-like clarity
+- 🔍 **Full-text search** with highlighted results
+- 🖼️ **Thumbnail sidebar** with page navigation
+- 🔎 **Smooth zoom** (in/out/fit width/fit page)
+- 🌙 **Display modes**: Light, Dark, and Night (inverted)
+- ⌨️ **Keyboard shortcuts** for power users
+- 🔒 **Privacy-focused**: PDFs never leave your device
+
+### Desktop App (macOS)
+- ⚡ **Native performance** via Rust + PDFium engine
+- 🎯 **System integration**: Open PDFs directly, file associations
+- 🖱️ **Trackpad gestures**: Pinch-to-zoom, smooth scrolling
+- 📦 **Standalone**: No browser required
+
+### Chrome Extension
+- 🔄 **Auto-intercept**: Opens all PDFs in Kiosk instead of Chrome's viewer
+- ✏️ **Annotations**: Highlight, underline, strikethrough, draw, shapes, text
+- 💾 **Persistent storage**: Annotations saved to Chrome storage
+- 📎 **Works everywhere**: Web URLs, local files, data URLs
+
+### Web App
+- 🌐 **No installation**: Works directly in browser
+- 📱 **Responsive**: Works on desktop and tablet
+- 🚀 **GitHub Pages ready**: Deploy your own instance
+
+---
+
+## 🖥️ Native macOS App
+
+### System Requirements
+| Requirement | Minimum |
+|------------|---------|
+| **macOS** | 10.15 (Catalina) or later |
+| **Architecture** | Apple Silicon (M1/M2/M3) or Intel |
+| **Storage** | ~50 MB |
+
+### Installation
+
+#### Option 1: DMG Installer (Recommended)
+1. Download `Kiosk_0.1.0_aarch64.dmg` from [Releases](https://github.com/Syrthax/Kiosk/releases)
+2. Open the DMG file
+3. Drag `Kiosk.app` to the `Applications` folder
+4. Eject the DMG
+
+#### Option 2: Direct .app
+1. Download `Kiosk.app` from Releases
+2. Move to `/Applications`
+3. Run: `xattr -cr /Applications/Kiosk.app` (removes quarantine)
+
+### First Launch
+Since the app is ad-hoc signed (not notarized with Apple), you may see a Gatekeeper warning:
+1. **Right-click** on Kiosk.app
+2. Select **Open**
+3. Click **Open** in the dialog
+
+Or run in Terminal:
+```bash
+xattr -cr /Applications/Kiosk.app
+open -a Kiosk
+```
+
+### Keyboard Shortcuts
+| Action | Shortcut |
+|--------|----------|
+| Open File | `⌘ O` |
+| Zoom In | `⌘ +` |
+| Zoom Out | `⌘ -` |
+| Fit Width | `⌘ W` |
+| Fit Page | `⌘ 0` |
+| Toggle Sidebar | `⌘ S` |
+| Search | `⌘ F` |
+| Next Page | `→` or `Page Down` |
+| Previous Page | `←` or `Page Up` |
+
+---
+
+## 🧩 Chrome Extension
+
+### Installation
+1. Download `kiosk-extension.zip` from [Releases](https://github.com/Syrthax/Kiosk/releases)
+2. Unzip the file
+3. Open Chrome → `chrome://extensions`
+4. Enable **Developer mode** (top right)
+5. Click **Load unpacked** → Select the `extension` folder
+
+### For Local File Access
+To open PDFs from your filesystem:
+1. Go to `chrome://extensions`
+2. Find Kiosk PDF Reader
+3. Click **Details**
+4. Enable **Allow access to file URLs**
+
+---
+
+## 🌐 Web App
+
+### Online Demo
+Visit: [https://syrthax.github.io/Kiosk](https://syrthax.github.io/Kiosk)
+
+### Self-Hosting
+```bash
+# Clone the repository
+git clone https://github.com/Syrthax/Kiosk.git
+cd Kiosk
+
+# Serve locally
+python -m http.server 8000
+# or
+npx http-server
+
+# Open http://localhost:8000
+```
+
+### GitHub Pages Deployment
+1. Fork this repository
+2. Go to Settings → Pages
+3. Select `main` branch, root folder
+4. Your app will be at `https://yourusername.github.io/Kiosk`
+
+---
+
+## 🏗️ Project Structure
+
+```
+kiosk/
+├── index.html                    # Web app home page
+├── viewer.html                   # Web app PDF viewer
+├── css/                          # Web app styles
+├── js/                           # Web app scripts
+├── extension/                    # Chrome extension
+│   ├── manifest.json
+│   ├── background/
+│   ├── content/
+│   ├── popup/
+│   └── viewer/
+└── Desktop (Tauri)/
+    ├── Kiosk/                    # Tauri app source
+    │   ├── src/                  # TypeScript frontend
+    │   ├── src-tauri/            # Rust backend
+    │   │   └── src/
+    │   │       ├── main.rs
+    │   │       ├── commands.rs
+    │   │       └── pdf/          # PDFium renderer
+    │   └── package.json
+    └── Mac/                      # macOS distribution
+        ├── Kiosk.app
+        └── Kiosk_0.1.0_aarch64.dmg
+```
+
+---
+
+## 🛠️ Building from Source
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) 18+
+- [Rust](https://rustup.rs/) 1.70+
+- [PDFium library](https://pdfium.googlesource.com/pdfium/) (for macOS app)
+
+### macOS App
+```bash
+cd "Desktop (Tauri)/Kiosk"
+npm install
+npm run tauri build
+```
+
+Build output:
+- `.app`: `src-tauri/target/release/bundle/macos/Kiosk.app`
+- `.dmg`: `src-tauri/target/release/bundle/dmg/Kiosk_*.dmg`
+
+### Chrome Extension
+The extension requires no build step. Load the `extension/` folder directly in Chrome.
+
+---
+
+## 🔧 Technology Stack
+
+### Desktop App
+| Layer | Technology |
+|-------|------------|
+| Framework | [Tauri](https://tauri.app/) 2.0 |
+| Frontend | TypeScript, Vite |
+| Backend | Rust |
+| PDF Engine | [PDFium](https://pdfium.googlesource.com/pdfium/) via pdfium-render |
+| Rendering | Native PNG with CSS filters for display modes |
+
+### Web App & Extension
+| Layer | Technology |
+|-------|------------|
+| PDF Rendering | [PDF.js](https://mozilla.github.io/pdf.js/) |
+| Search | Web Workers (non-blocking) |
+| Storage | localStorage, Chrome Storage API |
+| Annotations | Canvas-based drawing |
+
+---
+
+## 📋 Compatibility
+
+### macOS App
+| macOS Version | Support |
+|---------------|---------|
+| 15 Sequoia | ✅ Full |
+| 14 Sonoma | ✅ Full |
+| 13 Ventura | ✅ Full |
+| 12 Monterey | ✅ Full |
+| 11 Big Sur | ✅ Full |
+| 10.15 Catalina | ✅ Full |
+| 10.14 and earlier | ❌ Not supported |
+
+| Architecture | Support |
+|--------------|---------|
+| Apple Silicon (M1/M2/M3/M4) | ✅ Native |
+| Intel (x86_64) | ✅ Rosetta 2 |
+
+### Chrome Extension
+| Browser | Support |
+|---------|---------|
+| Chrome 88+ | ✅ Full |
+| Edge 88+ | ✅ Full |
+| Brave | ✅ Full |
+| Firefox | ❌ Not compatible (Manifest V3) |
+| Safari | ❌ Not compatible |
+
+### Web App
+| Browser | Support |
+|---------|---------|
+| Chrome | ✅ Full |
+| Firefox | ✅ Full |
+| Safari | ✅ Full |
+| Edge | ✅ Full |
+
+---
+
+## 🔒 Privacy
+
+Kiosk is designed with privacy as a core principle:
+
+- **No telemetry**: Zero data collection or analytics
+- **No cloud**: PDFs are processed entirely on your device
+- **No accounts**: No sign-up or login required
+- **Open source**: Full code transparency
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- [PDF.js](https://mozilla.github.io/pdf.js/) - Mozilla's PDF rendering library
+- [PDFium](https://pdfium.googlesource.com/pdfium/) - Google's PDF rendering engine
+- [Tauri](https://tauri.app/) - Framework for building native apps
+- [pdfium-render](https://crates.io/crates/pdfium-render) - Rust bindings for PDFium
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://github.com/Syrthax">Sarthak Ghosh</a>
+</p>

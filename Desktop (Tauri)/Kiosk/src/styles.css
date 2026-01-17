@@ -1,0 +1,749 @@
+/**
+ * Kiosk PDF Reader - Styles
+ * Red & White theme matching web app and extension
+ */
+
+/* ============================================================================
+   CSS Variables - Light Mode (Default)
+   ============================================================================ */
+
+:root {
+  /* Brand Colors - Red & White */
+  --accent-color: #dc2626;
+  --accent-hover: #b91c1c;
+  --accent-light: #fee2e2;
+  --accent-glow: rgba(220, 38, 38, 0.25);
+  
+  /* Light Mode Colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
+  --bg-hover: #eeeeee;
+  --bg-viewer: #e5e5e5;
+  --text-primary: #171717;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+  --border-color: #e5e5e5;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+
+  /* Spacing */
+  --toolbar-height: 48px;
+  --sidebar-width: 180px;
+
+  /* Typography */
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+
+  /* Rendering */
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================================
+   Dark Mode - Syncs with macOS System Theme
+   ============================================================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Brand Colors stay consistent */
+    --accent-color: #ef4444;
+    --accent-hover: #f87171;
+    --accent-light: rgba(239, 68, 68, 0.15);
+    --accent-glow: rgba(239, 68, 68, 0.3);
+    
+    /* Dark Mode Colors */
+    --bg-primary: #171717;
+    --bg-secondary: #1f1f1f;
+    --bg-tertiary: #262626;
+    --bg-hover: #333333;
+    --bg-viewer: #0a0a0a;
+    --text-primary: #fafafa;
+    --text-secondary: #a3a3a3;
+    --text-muted: #525252;
+    --border-color: #333333;
+    --shadow-color: rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ============================================================================
+   Reset & Base
+   ============================================================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ============================================================================
+   Toolbar
+   ============================================================================ */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--toolbar-height);
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.toolbar-left,
+.toolbar-center,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-hover);
+}
+
+.toolbar-btn:active {
+  background: var(--bg-tertiary);
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color);
+  margin: 0 8px;
+}
+
+.page-counter,
+.zoom-label {
+  min-width: 60px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Search */
+.search-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+#search-input {
+  width: 200px;
+  height: 32px;
+  padding: 0 12px 0 36px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, width 0.2s;
+}
+
+#search-input:focus {
+  border-color: var(--accent-color);
+  width: 260px;
+}
+
+#search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ============================================================================
+   Main Content
+   ============================================================================ */
+
+#main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ============================================================================
+   Sidebar
+   ============================================================================ */
+
+#sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.2s, min-width 0.2s;
+}
+
+#sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+}
+
+#thumbnails-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  gap: 12px;
+}
+
+.thumbnail {
+  position: relative;
+  background: white;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.thumbnail:hover {
+  transform: scale(1.02);
+}
+
+.thumbnail.active {
+  border-color: var(--accent-color);
+}
+
+.thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.thumbnail-label {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+  font-size: 11px;
+  color: white;
+}
+
+/* ============================================================================
+   Viewer
+   ============================================================================ */
+
+#viewer-container {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  background: var(--bg-viewer);
+  /* Ensure smooth scrolling for trackpad */
+  scroll-behavior: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#pages-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  gap: 20px;
+}
+
+.page {
+  position: relative;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+
+.page-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.text-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: text;
+}
+
+.text-overlay span {
+  cursor: text;
+}
+
+.annotation-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Search Results
+   ============================================================================ */
+
+.search-results {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 300px;
+  max-height: 400px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+}
+
+.search-results:empty {
+  display: none;
+}
+
+.search-result {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s;
+}
+
+.search-result:hover {
+  background: var(--bg-hover);
+}
+
+.search-result:last-child {
+  border-bottom: none;
+}
+
+.search-result-page {
+  font-size: 11px;
+  color: var(--accent-color);
+  font-weight: 500;
+}
+
+.search-result-text {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.no-results {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* ============================================================================
+   Welcome Screen
+   ============================================================================ */
+
+.welcome-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  z-index: 50;
+}
+
+.welcome-screen.hidden {
+  display: none;
+}
+
+.welcome-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 400px;
+  height: 300px;
+  padding: 40px;
+  background: var(--bg-secondary);
+  border: 2px dashed var(--border-color);
+  border-radius: 16px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.welcome-drop-zone.dragover {
+  border-color: var(--accent-color);
+  background: rgba(74, 158, 255, 0.1);
+}
+
+.welcome-drop-zone svg {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.welcome-drop-zone h2 {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.welcome-drop-zone p {
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.welcome-browse-btn {
+  padding: 10px 24px;
+  background: var(--accent-color);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.welcome-browse-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.welcome-browse-btn:active {
+  transform: translateY(0);
+}
+
+/* ============================================================================
+   Loading Overlay
+   ============================================================================ */
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  gap: 16px;
+  color: white;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================================
+   Error Dialog
+   ============================================================================ */
+
+.error-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 300;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+.error-dialog.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.error-dialog-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 20px 60px var(--shadow-color);
+}
+
+.error-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.error-dialog-header svg {
+  color: var(--accent-color);
+  flex-shrink: 0;
+}
+
+.error-dialog-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.error-dialog-message {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.error-dialog-btn {
+  width: 100%;
+  padding: 10px 20px;
+  background: var(--accent-color);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.error-dialog-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* ============================================================================
+   Scrollbar
+   ============================================================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ============================================================================
+   Display Mode Dropdown
+   ============================================================================ */
+
+.display-mode-container {
+  position: relative;
+}
+
+.display-mode-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.display-mode-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--shadow-color);
+  min-width: 160px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity 0.15s, visibility 0.15s, transform 0.15s;
+  z-index: 150;
+  overflow: hidden;
+}
+
+.display-mode-dropdown.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.display-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+  text-align: left;
+}
+
+.display-mode-option:hover {
+  background: var(--bg-hover);
+}
+
+.display-mode-option.active {
+  background: var(--accent-light);
+  color: var(--accent-color);
+}
+
+.display-mode-option svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.display-mode-option.active svg {
+  color: var(--accent-color);
+}
+
+/* ============================================================================
+   Display Mode Classes - Light/Dark/Night
+   ============================================================================ */
+
+/* Light Mode (explicit class override) */
+body.mode-light {
+  --accent-color: #dc2626;
+  --accent-hover: #b91c1c;
+  --accent-light: #fee2e2;
+  --accent-glow: rgba(220, 38, 38, 0.25);
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
+  --bg-hover: #eeeeee;
+  --bg-viewer: #e5e5e5;
+  --text-primary: #171717;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+  --border-color: #e5e5e5;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Mode (explicit class override) */
+body.mode-dark {
+  --accent-color: #ef4444;
+  --accent-hover: #f87171;
+  --accent-light: rgba(239, 68, 68, 0.15);
+  --accent-glow: rgba(239, 68, 68, 0.3);
+  --bg-primary: #171717;
+  --bg-secondary: #1f1f1f;
+  --bg-tertiary: #262626;
+  --bg-hover: #333333;
+  --bg-viewer: #0a0a0a;
+  --text-primary: #fafafa;
+  --text-secondary: #a3a3a3;
+  --text-muted: #525252;
+  --border-color: #333333;
+  --shadow-color: rgba(0, 0, 0, 0.4);
+}
+
+/* Night Mode - Dark UI with inverted PDF content */
+body.mode-night {
+  --accent-color: #ef4444;
+  --accent-hover: #f87171;
+  --accent-light: rgba(239, 68, 68, 0.15);
+  --accent-glow: rgba(239, 68, 68, 0.3);
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #141414;
+  --bg-tertiary: #1a1a1a;
+  --bg-hover: #262626;
+  --bg-viewer: #000000;
+  --text-primary: #fafafa;
+  --text-secondary: #a3a3a3;
+  --text-muted: #525252;
+  --border-color: #262626;
+  --shadow-color: rgba(0, 0, 0, 0.6);
+}
+
+/* ============================================================================
+   Night Mode PDF Inversion - GPU-accelerated filter
+   
+   The filter is applied to the PDF page images and thumbnail images ONLY.
+   This keeps UI elements (toolbar, sidebar background, scrollbars) normal
+   while inverting only the PDF content for comfortable night reading.
+   ============================================================================ */
+
+/* Main PDF pages - apply inversion to the page container (contains image + overlays) */
+body.mode-night .page {
+  filter: invert(1) hue-rotate(180deg);
+  /* Ensure no background bleed through */
+  background: black;
+}
+
+/* Thumbnails in night mode */
+body.mode-night .thumbnail {
+  filter: invert(1) hue-rotate(180deg);
+  /* Inverted white background becomes black */
+  background: black;
+}

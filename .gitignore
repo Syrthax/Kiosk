@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+*.swp
+*.swo
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tauri / Rust build artifacts
+Desktop\ (Tauri)/Kiosk/src-tauri/target/
+Desktop\ (Tauri)/Kiosk/dist/
+Desktop\ (Tauri)/Kiosk/node_modules/
+
+# Distribution binaries (uploaded to GitHub Releases instead)
+Desktop\ (Tauri)/Mac/*.app
+Desktop\ (Tauri)/Mac/*.dmg
+Desktop\ (Tauri)/Mac/Kiosk.app/
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
