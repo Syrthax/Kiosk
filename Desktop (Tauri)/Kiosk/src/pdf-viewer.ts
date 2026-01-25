@@ -18,7 +18,30 @@ import {
   type PageInfo,
   type CharRect,
   type SearchResult,
+  type AnnotationData,
+  type AnnotationColor,
 } from './pdf-api';
+
+import {
+  initAnnotations,
+  resetAnnotations,
+  setAnnotationTool,
+  getAnnotationTool,
+  startAnnotation,
+  continueAnnotation,
+  finishAnnotation,
+  cancelAnnotation,
+  saveAllAnnotations,
+  getPageAnnotations,
+  getPendingAnnotation,
+  onAnnotationStateChange,
+  pdfToScreen,
+  pdfRectToScreen,
+  hasUnsavedChanges,
+  addTextSelectionAnnotation,
+  type AnnotationTool,
+  type PendingAnnotation,
+} from './annotations';
 
 // ============================================================================
 // Constants
@@ -129,8 +152,20 @@ export function initViewer(): void {
   // Apply initial display mode
   applyDisplayMode(state.displayMode);
   
+  // Set up annotation state change listener
+  setupAnnotationListener();
+  
   // Log initialization
   console.log('[Kiosk] Viewer initialized');
+}
+
+/**
+ * Set up listener for annotation state changes to re-render overlays.
+ */
+function setupAnnotationListener(): void {
+  onAnnotationStateChange(() => {
+    renderAnnotationOverlays();
+  });
 }
 
 function setupEventListeners(): void {
@@ -236,6 +271,7 @@ export async function openFile(path: string): Promise<void> {
     // Close previous document
     if (state.docId) {
       await closePdf(state.docId);
+      resetAnnotations();
       clearRenderedPages();
     }
 
@@ -256,6 +292,7 @@ export async function openBytes(bytes: Uint8Array, fileName?: string): Promise<v
     // Close previous document
     if (state.docId) {
       await closePdf(state.docId);
+      resetAnnotations();
       clearRenderedPages();
     }
 
@@ -295,6 +332,9 @@ async function initializeDocument(result: LoadResult): Promise<void> {
 
   // Update UI
   updatePageCounter();
+  
+  // Initialize annotations for this document
+  await initAnnotations(result.id, state.pages);
 }
 
 // ============================================================================
@@ -327,13 +367,54 @@ function createPageContainers(): void {
     textOverlay.className = 'text-overlay';
     pageEl.appendChild(textOverlay);
 
-    // Annotation overlay
+    // Annotation overlay (for displaying and drawing annotations)
     const annotationOverlay = document.createElement('div');
     annotationOverlay.className = 'annotation-overlay';
+    setupAnnotationOverlayEvents(annotationOverlay, i);
     pageEl.appendChild(annotationOverlay);
 
     pagesContainer.appendChild(pageEl);
   }
+}
+
+/**
+ * Set up mouse/touch events for annotation drawing on a page overlay.
+ */
+function setupAnnotationOverlayEvents(overlay: HTMLElement, pageIndex: number): void {
+  overlay.addEventListener('mousedown', (e) => {
+    if (getAnnotationTool() === 'select') return;
+    
+    const rect = overlay.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    startAnnotation(pageIndex, x, y, state.scale);
+    e.preventDefault();
+  });
+  
+  overlay.addEventListener('mousemove', (e) => {
+    const rect = overlay.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    continueAnnotation(x, y, state.scale);
+  });
+  
+  overlay.addEventListener('mouseup', () => {
+    finishAnnotation();
+  });
+  
+  overlay.addEventListener('mouseleave', () => {
+    // Cancel the annotation if mouse leaves - user can start again
+    cancelAnnotation();
+  });
+  
+  // Keyboard handler for Escape to cancel annotation
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      cancelAnnotation();
+    }
+  });
 }
 
 async function renderVisiblePages(): Promise<void> {
@@ -1071,6 +1152,321 @@ export function cycleDisplayMode(): void {
   const nextIndex = (currentIndex + 1) % modes.length;
   setDisplayMode(modes[nextIndex]);
 }
+
+// ============================================================================
+// Annotation Rendering
+// ============================================================================
+
+/**
+ * Render annotation overlays for all visible pages.
+ */
+function renderAnnotationOverlays(): void {
+  if (!state.docId) return;
+  
+  const pages = pagesContainer.querySelectorAll('.page');
+  pages.forEach((pageEl, pageIndex) => {
+    const overlay = pageEl.querySelector('.annotation-overlay') as HTMLElement;
+    if (!overlay) return;
+    
+    const pageInfo = state.pages[pageIndex];
+    if (!pageInfo) return;
+    
+    // Clear existing annotation elements
+    overlay.innerHTML = '';
+    
+    // Render saved annotations
+    const annotations = getPageAnnotations(pageIndex);
+    for (const annot of annotations) {
+      const el = createAnnotationElement(annot, pageInfo, state.scale);
+      if (el) {
+        overlay.appendChild(el);
+      }
+    }
+    
+    // Render pending annotation
+    const pending = getPendingAnnotation();
+    if (pending && pending.pageIndex === pageIndex) {
+      const el = createPendingAnnotationElement(pending, pageInfo, state.scale);
+      if (el) {
+        overlay.appendChild(el);
+      }
+    }
+  });
+}
+
+/**
+ * Create a DOM element for a saved annotation.
+ */
+function createAnnotationElement(
+  annot: AnnotationData,
+  pageInfo: PageInfo,
+  scale: number
+): HTMLElement | null {
+  const screenRect = pdfRectToScreen(annot.rect, pageInfo, scale);
+  
+  const el = document.createElement('div');
+  el.className = `annotation annotation-${annot.annotation_type}`;
+  el.style.position = 'absolute';
+  el.style.left = `${screenRect.x}px`;
+  el.style.top = `${screenRect.y}px`;
+  el.style.width = `${screenRect.width}px`;
+  el.style.height = `${screenRect.height}px`;
+  
+  // Apply color and opacity
+  const color = `rgba(${Math.round(annot.color.r * 255)}, ${Math.round(annot.color.g * 255)}, ${Math.round(annot.color.b * 255)}, ${annot.opacity})`;
+  
+  switch (annot.annotation_type) {
+    case 'highlight':
+      el.style.backgroundColor = color;
+      el.style.mixBlendMode = 'multiply';
+      break;
+    case 'underline':
+      el.style.borderBottom = `2px solid ${color}`;
+      el.style.height = '2px';
+      el.style.top = `${screenRect.y + screenRect.height - 2}px`;
+      break;
+    case 'strikethrough':
+      el.style.borderTop = `2px solid ${color}`;
+      el.style.height = '2px';
+      el.style.top = `${screenRect.y + screenRect.height / 2}px`;
+      break;
+    case 'ink':
+      // Render ink as SVG
+      return createInkElement(annot, pageInfo, scale);
+    case 'text':
+      el.style.backgroundImage = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='%23${colorToHex(annot.color)}'%3E%3Cpath d='M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z'/%3E%3C/svg%3E")`;
+      el.style.backgroundSize = 'contain';
+      el.style.backgroundRepeat = 'no-repeat';
+      el.style.width = '24px';
+      el.style.height = '24px';
+      el.title = annot.contents || '';
+      break;
+  }
+  
+  return el;
+}
+
+/**
+ * Create an SVG element for an ink annotation.
+ */
+function createInkElement(
+  annot: AnnotationData,
+  pageInfo: PageInfo,
+  scale: number
+): HTMLElement {
+  const screenRect = pdfRectToScreen(annot.rect, pageInfo, scale);
+  
+  const container = document.createElement('div');
+  container.className = 'annotation annotation-ink';
+  container.style.position = 'absolute';
+  container.style.left = `${screenRect.x}px`;
+  container.style.top = `${screenRect.y}px`;
+  container.style.width = `${screenRect.width}px`;
+  container.style.height = `${screenRect.height}px`;
+  container.style.pointerEvents = 'none';
+  
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  svg.style.overflow = 'visible';
+  
+  const color = `rgba(${Math.round(annot.color.r * 255)}, ${Math.round(annot.color.g * 255)}, ${Math.round(annot.color.b * 255)}, ${annot.opacity})`;
+  const strokeWidth = (annot.stroke_width || 2) * scale;
+  
+  if (annot.ink_paths) {
+    for (const path of annot.ink_paths) {
+      if (path.length < 2) continue;
+      
+      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      
+      // Convert PDF points to screen coordinates relative to the container
+      let d = '';
+      for (let i = 0; i < path.length; i++) {
+        const screenPt = pdfToScreen(path[i].x, path[i].y, pageInfo, scale);
+        const x = screenPt.x - screenRect.x;
+        const y = screenPt.y - screenRect.y;
+        
+        if (i === 0) {
+          d = `M ${x} ${y}`;
+        } else {
+          d += ` L ${x} ${y}`;
+        }
+      }
+      
+      pathEl.setAttribute('d', d);
+      pathEl.setAttribute('stroke', color);
+      pathEl.setAttribute('stroke-width', String(strokeWidth));
+      pathEl.setAttribute('fill', 'none');
+      pathEl.setAttribute('stroke-linecap', 'round');
+      pathEl.setAttribute('stroke-linejoin', 'round');
+      
+      svg.appendChild(pathEl);
+    }
+  }
+  
+  container.appendChild(svg);
+  return container;
+}
+
+/**
+ * Create a DOM element for a pending annotation being drawn.
+ */
+function createPendingAnnotationElement(
+  pending: PendingAnnotation,
+  pageInfo: PageInfo,
+  scale: number
+): HTMLElement | null {
+  if (!pending.startPoint || !pending.endPoint) return null;
+  
+  const el = document.createElement('div');
+  el.className = `annotation annotation-pending annotation-${pending.type}`;
+  el.style.position = 'absolute';
+  el.style.pointerEvents = 'none';
+  
+  const color = `rgba(${Math.round(pending.color.r * 255)}, ${Math.round(pending.color.g * 255)}, ${Math.round(pending.color.b * 255)}, ${pending.opacity})`;
+  
+  if (pending.type === 'ink' && pending.currentPath && pending.currentPath.length > 1) {
+    // Create SVG for ink drawing
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.style.position = 'absolute';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.overflow = 'visible';
+    svg.style.pointerEvents = 'none';
+    
+    const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    
+    let d = '';
+    for (let i = 0; i < pending.currentPath.length; i++) {
+      const screenPt = pdfToScreen(pending.currentPath[i].x, pending.currentPath[i].y, pageInfo, scale);
+      if (i === 0) {
+        d = `M ${screenPt.x} ${screenPt.y}`;
+      } else {
+        d += ` L ${screenPt.x} ${screenPt.y}`;
+      }
+    }
+    
+    pathEl.setAttribute('d', d);
+    pathEl.setAttribute('stroke', color);
+    pathEl.setAttribute('stroke-width', String(pending.strokeWidth * scale));
+    pathEl.setAttribute('fill', 'none');
+    pathEl.setAttribute('stroke-linecap', 'round');
+    pathEl.setAttribute('stroke-linejoin', 'round');
+    
+    svg.appendChild(pathEl);
+    el.style.left = '0';
+    el.style.top = '0';
+    el.style.width = '100%';
+    el.style.height = '100%';
+    el.appendChild(svg);
+    
+  } else {
+    // Rectangle-based annotation (highlight, underline, strikethrough)
+    const start = pdfToScreen(pending.startPoint.x, pending.startPoint.y, pageInfo, scale);
+    const end = pdfToScreen(pending.endPoint.x, pending.endPoint.y, pageInfo, scale);
+    
+    const left = Math.min(start.x, end.x);
+    const top = Math.min(start.y, end.y);
+    const width = Math.abs(end.x - start.x);
+    const height = Math.abs(end.y - start.y) || 16; // Minimum height
+    
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.width = `${width}px`;
+    el.style.height = `${height}px`;
+    
+    switch (pending.type) {
+      case 'highlight':
+        el.style.backgroundColor = color;
+        el.style.mixBlendMode = 'multiply';
+        break;
+      case 'underline':
+        el.style.borderBottom = `2px solid ${color}`;
+        el.style.height = '2px';
+        break;
+      case 'strikethrough':
+        el.style.borderTop = `2px solid ${color}`;
+        el.style.height = '2px';
+        el.style.top = `${top + height / 2}px`;
+        break;
+    }
+  }
+  
+  return el;
+}
+
+/**
+ * Convert annotation color to hex string.
+ */
+function colorToHex(color: AnnotationColor): string {
+  const r = Math.round(color.r * 255).toString(16).padStart(2, '0');
+  const g = Math.round(color.g * 255).toString(16).padStart(2, '0');
+  const b = Math.round(color.b * 255).toString(16).padStart(2, '0');
+  return `${r}${g}${b}`;
+}
+
+// ============================================================================
+// Text Selection Annotations
+// ============================================================================
+
+/**
+ * Apply annotation to the current text selection.
+ * Returns true if annotation was applied, false if no valid selection.
+ */
+export function applyAnnotationToSelection(
+  tool: 'highlight' | 'underline' | 'strikethrough'
+): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !selection.rangeCount) {
+    return false;
+  }
+  
+  const range = selection.getRangeAt(0);
+  
+  // Find which page this selection is on
+  let pageElement = range.commonAncestorContainer as HTMLElement;
+  while (pageElement && !pageElement.classList?.contains('page')) {
+    pageElement = pageElement.parentElement as HTMLElement;
+  }
+  
+  if (!pageElement) return false;
+  
+  // Get page index from data attribute or DOM position
+  const pageIndex = parseInt(pageElement.dataset.pageIndex || '0', 10);
+  
+  // Get selection bounding rect relative to page
+  const selectionRect = range.getBoundingClientRect();
+  const pageRect = pageElement.getBoundingClientRect();
+  
+  const relativeRect = {
+    x: selectionRect.left - pageRect.left,
+    y: selectionRect.top - pageRect.top,
+    width: selectionRect.width,
+    height: selectionRect.height,
+  };
+  
+  // Add the annotation
+  addTextSelectionAnnotation(pageIndex, relativeRect, state.scale, tool);
+  
+  // Clear selection after applying
+  selection.removeAllRanges();
+  
+  return true;
+}
+
+// ============================================================================
+// Export annotation functions for external use
+// ============================================================================
+
+export { 
+  setAnnotationTool,
+  getAnnotationTool,
+  saveAllAnnotations,
+  hasUnsavedChanges,
+  type AnnotationTool,
+};
 
 // ============================================================================
 // Export state for debugging

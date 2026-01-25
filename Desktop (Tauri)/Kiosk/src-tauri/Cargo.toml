@@ -37,3 +37,15 @@ thiserror = "1"
 # URL parsing for file:// URLs
 url = "2"
 
+# URL encoding/decoding for handling path special characters
+urlencoding = "2"
+
+# PDF manipulation for annotations (lopdf for writing annotations)
+lopdf = "0.34"
+
+# Base64 encoding for annotation data
+base64 = "0.22"
+
+# Date/time for annotation timestamps
+chrono = "0.4"
+

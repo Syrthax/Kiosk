@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background circle area for adaptive icon safe zone -->
+    <group android:translateX="22" android:translateY="22">
+        <!-- PDF document icon -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M32,4H12C9.79,4 8,5.79 8,8v48c0,2.21 1.79,4 4,4h40c2.21,0 4,-1.79 4,-4V20L32,4zM12,56V8h18v14h14v34H12z"/>
+        <path
+            android:fillColor="#E53935"
+            android:pathData="M18,38h28v4H18zM18,46h20v4H18zM18,30h28v4H18z"/>
+    </group>
+</vector>

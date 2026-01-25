@@ -154,6 +154,123 @@ export async function searchText(
 }
 
 // ============================================================================
+// Annotation Types
+// ============================================================================
+
+/** Annotation types supported by Kiosk */
+export type AnnotationType = 'highlight' | 'underline' | 'strikethrough' | 'ink' | 'text';
+
+/** A rectangle in PDF coordinates (bottom-left origin) */
+export interface PdfRect {
+  x1: number;  // left
+  y1: number;  // bottom  
+  x2: number;  // right
+  y2: number;  // top
+}
+
+/** A point in PDF coordinates */
+export interface PdfPoint {
+  x: number;
+  y: number;
+}
+
+/** Color in RGB format (0.0-1.0 range) */
+export interface AnnotationColor {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/** Annotation data structure */
+export interface AnnotationData {
+  annotation_type: AnnotationType;
+  page: number;
+  rect: PdfRect;
+  quad_points?: PdfPoint[];
+  ink_paths?: PdfPoint[][];
+  contents?: string;
+  color: AnnotationColor;
+  opacity: number;
+  stroke_width?: number;
+  id?: string;
+}
+
+/** Result of saving annotations */
+export interface SaveResult {
+  success: boolean;
+  path: string;
+  annotations_count: number;
+}
+
+// ============================================================================
+// Annotation API
+// ============================================================================
+
+/**
+ * Get the file path for a loaded document.
+ */
+export async function getDocumentPath(docId: string): Promise<string | null> {
+  return invoke<string | null>('get_document_path', { docId });
+}
+
+/**
+ * Get existing annotations from a PDF file.
+ */
+export async function getAnnotations(path: string): Promise<AnnotationData[]> {
+  return invoke<AnnotationData[]>('get_annotations', { path });
+}
+
+/**
+ * Save annotations to a PDF file.
+ */
+export async function saveAnnotations(
+  sourcePath: string,
+  annotations: AnnotationData[],
+  destPath?: string
+): Promise<SaveResult> {
+  return invoke<SaveResult>('save_annotations', {
+    sourcePath,
+    destPath,
+    annotationsData: annotations,
+  });
+}
+
+/**
+ * Remove a specific annotation by its bounding rectangle.
+ */
+export async function removeAnnotation(
+  sourcePath: string,
+  pageIndex: number,
+  rect: PdfRect,
+  destPath?: string
+): Promise<boolean> {
+  return invoke<boolean>('remove_annotation', {
+    sourcePath,
+    destPath,
+    pageIndex,
+    rectX1: rect.x1,
+    rectY1: rect.y1,
+    rectX2: rect.x2,
+    rectY2: rect.y2,
+  });
+}
+
+/**
+ * Clear all annotations from a page.
+ */
+export async function clearPageAnnotations(
+  sourcePath: string,
+  pageIndex: number,
+  destPath?: string
+): Promise<number> {
+  return invoke<number>('clear_page_annotations', {
+    sourcePath,
+    destPath,
+    pageIndex,
+  });
+}
+
+// ============================================================================
 // Utilities
 // ============================================================================
 

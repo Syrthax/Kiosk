@@ -6,6 +6,7 @@
 //! it in app state. Instead, we create Pdfium instances on-demand for each
 //! operation. The document bytes are stored in state for reuse.
 
+use crate::annotations::{self, AnnotationData, PdfRect, SaveResult};
 use crate::pdf::{
     self, CharRect, DocumentInfo, PageInfo, SearchResult,
 };
@@ -205,4 +206,122 @@ pub fn get_all_page_infos(doc_id: String, state: State<AppState>) -> Result<Vec<
         .ok_or_else(|| "Document not found".to_string())?;
 
     pdf::get_all_page_infos(&doc_state.bytes).map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Annotation Commands
+// ============================================================================
+
+/// Get file path for a loaded document.
+#[tauri::command]
+pub fn get_document_path(doc_id: String, state: State<AppState>) -> Result<Option<String>, String> {
+    let docs = state.documents.lock().unwrap();
+    let doc_state = docs
+        .get(&doc_id)
+        .ok_or_else(|| "Document not found".to_string())?;
+    
+    Ok(doc_state.path.clone())
+}
+
+/// Get existing annotations from a PDF file.
+#[tauri::command]
+pub fn get_annotations(path: String) -> Result<Vec<AnnotationData>, String> {
+    annotations::get_annotations(&path).map_err(|e| e.to_string())
+}
+
+/// Save annotations to a PDF file.
+/// If dest_path is None, saves to the original file.
+#[tauri::command]
+pub fn save_annotations(
+    source_path: String,
+    dest_path: Option<String>,
+    annotations_data: Vec<AnnotationData>,
+) -> Result<SaveResult, String> {
+    let dest = dest_path.unwrap_or_else(|| source_path.clone());
+    
+    // If saving to the same file, we need to use a temp file first
+    if dest == source_path {
+        let temp_path = format!("{}.tmp", source_path);
+        
+        // Save to temp file
+        let result = annotations::save_annotations(&source_path, &temp_path, annotations_data)
+            .map_err(|e| e.to_string())?;
+        
+        // Replace original with temp
+        std::fs::rename(&temp_path, &source_path)
+            .map_err(|e| format!("Failed to replace original file: {}", e))?;
+        
+        Ok(SaveResult {
+            success: true,
+            path: source_path,
+            annotations_count: result.annotations_count,
+        })
+    } else {
+        annotations::save_annotations(&source_path, &dest, annotations_data)
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Remove a specific annotation from a PDF.
+#[tauri::command]
+pub fn remove_annotation(
+    source_path: String,
+    dest_path: Option<String>,
+    page_index: u32,
+    rect_x1: f64,
+    rect_y1: f64,
+    rect_x2: f64,
+    rect_y2: f64,
+) -> Result<bool, String> {
+    let dest = dest_path.unwrap_or_else(|| source_path.clone());
+    let rect = PdfRect { x1: rect_x1, y1: rect_y1, x2: rect_x2, y2: rect_y2 };
+    
+    if dest == source_path {
+        let temp_path = format!("{}.tmp", source_path);
+        
+        let result = annotations::remove_annotation(&source_path, &temp_path, page_index, &rect)
+            .map_err(|e| e.to_string())?;
+        
+        if result {
+            std::fs::rename(&temp_path, &source_path)
+                .map_err(|e| format!("Failed to replace original file: {}", e))?;
+        } else {
+            // Clean up temp file if annotation wasn't found
+            let _ = std::fs::remove_file(&temp_path);
+        }
+        
+        Ok(result)
+    } else {
+        annotations::remove_annotation(&source_path, &dest, page_index, &rect)
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Clear all annotations from a page.
+#[tauri::command]
+pub fn clear_page_annotations(
+    source_path: String,
+    dest_path: Option<String>,
+    page_index: u32,
+) -> Result<usize, String> {
+    let dest = dest_path.unwrap_or_else(|| source_path.clone());
+    
+    if dest == source_path {
+        let temp_path = format!("{}.tmp", source_path);
+        
+        let count = annotations::clear_page_annotations(&source_path, &temp_path, page_index)
+            .map_err(|e| e.to_string())?;
+        
+        if count > 0 {
+            std::fs::rename(&temp_path, &source_path)
+                .map_err(|e| format!("Failed to replace original file: {}", e))?;
+        } else {
+            let _ = std::fs::remove_file(&temp_path);
+        }
+        
+        Ok(count)
+    } else {
+        annotations::clear_page_annotations(&source_path, &dest, page_index)
+            .map_err(|e| e.to_string())
+    }
 }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kiosk</string>
+    <string name="open_pdf">Open PDF</string>
+    <string name="no_pdf_selected">No PDF selected</string>
+    <string name="loading_pdf">Loading PDF…</string>
+    <string name="error_loading_pdf">Error loading PDF</string>
+    <string name="error_permission_denied">Permission denied. Please grant storage access.</string>
+    <string name="error_file_not_found">File not found</string>
+    <string name="error_corrupted_pdf">Unable to open this PDF. The file may be corrupted.</string>
+    <string name="error_unsupported_pdf">This PDF format is not supported.</string>
+    <string name="page_indicator">Page %1$d of %2$d</string>
+    <string name="toggle_night_mode">Toggle Night Mode</string>
+    <string name="retry">Retry</string>
+    <string name="close">Close</string>
+    <string name="welcome_message">Tap to open a PDF</string>
+    <string name="recent_files">Recent Files</string>
+    <string name="no_recent_files">No recent files</string>
+    <string name="night_mode_on">Night mode on</string>
+    <string name="night_mode_off">Night mode off</string>
+    <string name="grant_permission">Grant Permission</string>
+</resources>

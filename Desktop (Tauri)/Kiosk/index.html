@@ -153,6 +153,116 @@
             <div class="loading-spinner"></div>
             <span>Loading...</span>
           </div>
+
+          <!-- Annotation Dock -->
+          <div id="annotation-dock" class="annotation-dock" style="display: none;">
+            <div class="annotation-dock-tools">
+              <!-- Pointer/Select Tool -->
+              <button id="tool-select" class="dock-tool-btn active" title="Pointer (V)" data-tool="select">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path>
+                  <path d="M13 13l6 6"></path>
+                </svg>
+              </button>
+              
+              <div class="dock-separator"></div>
+              
+              <!-- Highlight -->
+              <button id="tool-highlight" class="dock-tool-btn" title="Highlight (H)" data-tool="highlight">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                  <path d="M2 17l10 5 10-5"></path>
+                  <path d="M2 12l10 5 10-5"></path>
+                </svg>
+              </button>
+              
+              <!-- Underline -->
+              <button id="tool-underline" class="dock-tool-btn" title="Underline (U)" data-tool="underline">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"></path>
+                  <line x1="4" y1="21" x2="20" y2="21"></line>
+                </svg>
+              </button>
+              
+              <!-- Strikethrough -->
+              <button id="tool-strikethrough" class="dock-tool-btn" title="Strikethrough (S)" data-tool="strikethrough">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <path d="M16 6C16 6 14 4 12 4C10 4 8 5.5 8 7.5C8 9 9 10 10 11"></path>
+                  <path d="M8 18C8 18 10 20 12 20C14 20 16 18.5 16 16.5C16 15 15 14 14 13"></path>
+                </svg>
+              </button>
+              
+              <div class="dock-separator"></div>
+              
+              <!-- Pen -->
+              <button id="tool-pen" class="dock-tool-btn" title="Pen (P)" data-tool="pen">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+                  <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+                  <path d="M2 2l7.586 7.586"></path>
+                  <circle cx="11" cy="11" r="2"></circle>
+                </svg>
+              </button>
+              
+              <!-- Text Comment -->
+              <button id="tool-text" class="dock-tool-btn" title="Comment (T)" data-tool="text">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </button>
+              
+              <div class="dock-separator"></div>
+              
+              <!-- Eraser -->
+              <button id="tool-eraser" class="dock-tool-btn" title="Eraser (E)" data-tool="eraser">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 20H7L3 16l9-9 8 8-4 4"></path>
+                  <path d="M12 7l5 5"></path>
+                </svg>
+              </button>
+              
+              <div class="dock-separator"></div>
+              
+              <!-- Color Picker -->
+              <div class="dock-color-picker">
+                <button id="color-yellow" class="dock-color-btn active" data-color="yellow" title="Yellow" style="background-color: #FFEB3B;"></button>
+                <button id="color-green" class="dock-color-btn" data-color="green" title="Green" style="background-color: #4CAF50;"></button>
+                <button id="color-blue" class="dock-color-btn" data-color="blue" title="Blue" style="background-color: #2196F3;"></button>
+                <button id="color-pink" class="dock-color-btn" data-color="pink" title="Pink" style="background-color: #E91E63;"></button>
+                <button id="color-red" class="dock-color-btn" data-color="red" title="Red" style="background-color: #F44336;"></button>
+              </div>
+              
+              <div class="dock-separator"></div>
+              
+              <!-- Undo Button -->
+              <button id="undo-annotation" class="dock-tool-btn" title="Undo (Cmd+Z)" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 7v6h6"></path>
+                  <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+                </svg>
+              </button>
+              
+              <!-- Redo Button -->
+              <button id="redo-annotation" class="dock-tool-btn" title="Redo (Cmd+Shift+Z)" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 7v6h-6"></path>
+                  <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"></path>
+                </svg>
+              </button>
+              
+              <div class="dock-separator"></div>
+              
+              <!-- Save Button -->
+              <button id="save-annotations" class="dock-tool-btn dock-save-btn" title="Save Annotations (Cmd+S)" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+              </button>
+            </div>
+          </div>
         </main>
       </div>
     </div>

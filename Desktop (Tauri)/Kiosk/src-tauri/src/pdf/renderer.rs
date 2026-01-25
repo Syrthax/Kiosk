@@ -11,6 +11,7 @@ use thiserror::Error;
 
 /// Errors that can occur during PDF operations.
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum PdfError {
     #[error("Failed to initialize PDFium: {0}")]
     InitError(String),
