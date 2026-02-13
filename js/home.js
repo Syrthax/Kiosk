@@ -23,6 +23,7 @@ function init() {
   setupEventListeners();
   setupFloatingDockScroll();
   setupTheme();
+  setupDownloadDropdown();
 }
 
 /* ==========================================
@@ -366,6 +367,67 @@ function setupTheme() {
       const systemTheme = e.matches ? 'night' : 'light';
       document.body.setAttribute('data-system-theme', systemTheme);
     }
+  });
+}
+
+/* ==========================================
+   DOWNLOAD DROPDOWN & OS DETECTION
+   ========================================== */
+
+function detectPlatform() {
+  const ua = navigator.userAgent || '';
+  const platform = navigator.platform || '';
+
+  if (/Android/i.test(ua)) return 'android';
+  if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows';
+  if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) return 'macos';
+  if (/CrOS/i.test(ua)) return 'chrome';
+  if (/Linux/i.test(platform)) return 'windows'; // fallback to Windows for Linux
+  return null;
+}
+
+function setupDownloadDropdown() {
+  const dropdown = document.getElementById('download-dropdown');
+  const downloadBtn = document.getElementById('download-btn');
+  const dropdownMenu = document.getElementById('dropdown-menu');
+
+  if (!dropdown || !downloadBtn) return;
+
+  // Detect platform and highlight the matching item
+  const detectedPlatform = detectPlatform();
+  if (detectedPlatform) {
+    const matchingItem = dropdownMenu.querySelector(`[data-platform="${detectedPlatform}"]`);
+    if (matchingItem) {
+      matchingItem.classList.add('detected');
+    }
+  }
+
+  // Toggle dropdown on button click
+  downloadBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dropdown.classList.toggle('open');
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target)) {
+      dropdown.classList.remove('open');
+    }
+  });
+
+  // Close dropdown on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      dropdown.classList.remove('open');
+    }
+  });
+
+  // Close dropdown after clicking an item (with slight delay for visual feedback)
+  dropdownMenu.querySelectorAll('.dropdown-item').forEach(item => {
+    item.addEventListener('click', () => {
+      setTimeout(() => dropdown.classList.remove('open'), 150);
+    });
   });
 }
 

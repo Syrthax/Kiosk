@@ -6,15 +6,29 @@
 
 <p align="center">
   <strong>A high-performance, privacy-focused PDF reader</strong><br>
-  Available as a native macOS app, Chrome extension, and web app
+  Available as a native macOS app, Windows app, Android app, Chrome extension, and web app
 </p>
 
 <p align="center">
   <a href="#-native-macos-app">Desktop App</a> •
+  <a href="#-windows-app">Windows App</a> •
+  <a href="#-android-app">Android App</a> •
   <a href="#-chrome-extension">Extension</a> •
   <a href="#-web-app">Web App</a> •
   <a href="#-installation">Installation</a>
 </p>
+
+---
+
+## 📥 Downloads
+
+| Platform | Latest Release | Link |
+|----------|---------------|------|
+| 🪟 **Windows** | v0.1.0w | [Download](https://github.com/Syrthax/Kiosk/releases/tag/v0.1.0w) |
+| 🍎 **macOS** | v0.1.0m | [Download](https://github.com/Syrthax/Kiosk/releases/tag/v0.1.0m) |
+| 🤖 **Android** | v0.1.0a | [Download](https://github.com/Syrthax/Kiosk/releases/tag/v0.1.0a) |
+| 🧩 **Chrome Extension** | v1.5e | [Download](https://github.com/Syrthax/Kiosk/releases/tag/v1.5e) |
+| 🌐 **Web App** | — | [Launch](https://syrthax.github.io/Kiosk) |
 
 ---
 
@@ -34,6 +48,17 @@
 - 🎯 **System integration**: Open PDFs directly, file associations
 - 🖱️ **Trackpad gestures**: Pinch-to-zoom, smooth scrolling
 - 📦 **Standalone**: No browser required
+
+### Desktop App (Windows)
+- ⚡ **Native performance** via Rust + PDFium engine
+- 🎯 **System integration**: Open PDFs directly, file associations
+- 📦 **Standalone**: No browser required
+- 🏗️ **Built via CI**: Automated GitHub Actions build pipeline
+
+### Android App
+- 📱 **Native Android** experience
+- 📄 **PDF viewing** with smooth navigation
+- 🔒 **Offline**: No internet required after installation
 
 ### Chrome Extension
 - 🔄 **Auto-intercept**: Opens all PDFs in Kiosk instead of Chrome's viewer
@@ -97,7 +122,40 @@ open -a Kiosk
 
 ---
 
-## 🧩 Chrome Extension
+## � Windows App
+
+### System Requirements
+| Requirement | Minimum |
+|------------|---------|
+| **Windows** | 10 (1803) or later |
+| **Architecture** | x86_64 |
+| **Storage** | ~50 MB |
+
+### Installation
+1. Download `kiosk-windows-installers.zip` from [Releases](https://github.com/Syrthax/Kiosk/releases/tag/v0.1.0w)
+2. Extract the ZIP file
+3. Run either the **MSI** or **NSIS** installer
+
+> **Note:** The Windows build is compiled via [GitHub Actions CI](https://github.com/Syrthax/Kiosk/actions) using the Tauri build pipeline with PDFium binaries sourced from [bblanchon/pdfium-binaries](https://github.com/bblanchon/pdfium-binaries).
+
+---
+
+## 🤖 Android App
+
+### System Requirements
+| Requirement | Minimum |
+|------------|---------|
+| **Android** | 8.0 (Oreo) or later |
+| **Storage** | ~30 MB |
+
+### Installation
+1. Download the APK from [Releases](https://github.com/Syrthax/Kiosk/releases/tag/v0.1.0a)
+2. Enable **Install from unknown sources** in your device settings
+3. Open the APK to install
+
+---
+
+## �🧩 Chrome Extension
 
 ### Installation
 1. Download `kiosk-extension.zip` from [Releases](https://github.com/Syrthax/Kiosk/releases)
@@ -148,6 +206,7 @@ npx http-server
 kiosk/
 ├── index.html                    # Web app home page
 ├── viewer.html                   # Web app PDF viewer
+├── versioning-schema.md          # Release versioning conventions
 ├── css/                          # Web app styles
 ├── js/                           # Web app scripts
 ├── extension/                    # Chrome extension
@@ -156,6 +215,9 @@ kiosk/
 │   ├── content/
 │   ├── popup/
 │   └── viewer/
+├── Android/                      # Android app source
+│   ├── app/
+│   └── build.gradle.kts
 └── Desktop (Tauri)/
     ├── Kiosk/                    # Tauri app source
     │   ├── src/                  # TypeScript frontend
@@ -165,9 +227,10 @@ kiosk/
     │   │       ├── commands.rs
     │   │       └── pdf/          # PDFium renderer
     │   └── package.json
-    └── Mac/                      # macOS distribution
-        ├── Kiosk.app
-        └── Kiosk_0.1.0_aarch64.dmg
+    ├── Mac/                      # macOS distribution
+    │   ├── Kiosk.app
+    │   └── Kiosk_0.1.0_aarch64.dmg
+    └── Windows/                  # Windows distribution
 ```
 
 ---
