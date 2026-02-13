@@ -1,0 +1,178 @@
+# ──────────────────────────────────────────────────────────────
+# Kiosk — Linux (Ubuntu) Build via GitHub Actions
+# ──────────────────────────────────────────────────────────────
+# Triggers:
+#   • Push to main  → builds and uploads artifact to the run
+#   • Git tag v*l   → creates a GitHub Release with AppImage/.deb
+#
+# What it does:
+#   1. Checks out repo
+#   2. Installs system dependencies for Tauri on Linux
+#   3. Installs Rust (stable)
+#   4. Installs Node 20
+#   5. Downloads PDFium shared library for Linux x64
+#   6. Patches tauri.conf.json resources for Linux
+#   7. Builds the Tauri app (AppImage + .deb)
+#   8. Uploads the installer artifacts
+#   9. Creates a GitHub Release on tag push (v*l)
+# ──────────────────────────────────────────────────────────────
+
+name: Build Linux
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*l"]          # e.g. v0.1.0l — Linux releases only
+  workflow_dispatch:       # manual trigger from GitHub UI
+
+# Only allow one build per ref at a time; cancel older runs
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-linux:
+    # Use Ubuntu 22.04 for broader glibc compatibility —
+    # binaries built on older glibc work on newer distros, not vice versa.
+    runs-on: ubuntu-22.04
+
+    defaults:
+      run:
+        # All commands run inside the Tauri project directory
+        working-directory: "Desktop (Tauri)/Kiosk"
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Install Linux system dependencies ─────────────────
+      # Tauri v2 on Linux requires WebKit2GTK 4.1 (soup3 variant),
+      # GTK3, and several other libs for building and bundling.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev \
+            patchelf \
+            file \
+            wget
+
+      # ── 3. Install Rust ──────────────────────────────────────
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # Cache Cargo registry + build artifacts to speed up subsequent builds
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Desktop (Tauri)/Kiosk/src-tauri/target
+          key: linux-cargo-${{ hashFiles('Desktop (Tauri)/Kiosk/src-tauri/Cargo.lock') }}
+          restore-keys: linux-cargo-
+
+      # ── 4. Install Node.js ───────────────────────────────────
+      - name: Install Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ── 5. Install frontend dependencies ─────────────────────
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ── 6. Download PDFium for Linux ─────────────────────────
+      # pdfium-render dynamically loads libpdfium.so at runtime.
+      # We download pre-built binaries from bblanchon/pdfium-binaries
+      # and place the .so where Tauri can bundle it as a resource.
+      - name: Download PDFium for Linux
+        run: |
+          PDFIUM_URL="https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-linux-x64.tgz"
+          EXTRACT_DIR="/tmp/pdfium"
+
+          echo "Downloading PDFium for Linux from bblanchon/pdfium-binaries..."
+          wget -q "$PDFIUM_URL" -O /tmp/pdfium-linux-x64.tgz
+
+          echo "Extracting..."
+          mkdir -p "$EXTRACT_DIR"
+          tar -xzf /tmp/pdfium-linux-x64.tgz -C "$EXTRACT_DIR"
+
+          # Find libpdfium.so (typically in lib/ directory)
+          SO_FILE=$(find "$EXTRACT_DIR" -name "libpdfium.so" -type f | head -1)
+          if [ -z "$SO_FILE" ]; then
+            echo "ERROR: libpdfium.so not found in archive! Contents:"
+            find "$EXTRACT_DIR" -type f
+            exit 1
+          fi
+
+          # Copy to src-tauri/ so Tauri can bundle it as a resource
+          cp "$SO_FILE" src-tauri/libpdfium.so
+          echo "libpdfium.so copied to src-tauri/libpdfium.so"
+          ls -lh src-tauri/libpdfium.so
+
+      # ── 7. Patch tauri.conf.json for Linux ───────────────────
+      # Replace the Windows-specific resource (pdfium.dll) with the
+      # Linux-specific resource (libpdfium.so) so Tauri bundles
+      # the correct library into AppImage and .deb packages.
+      - name: Patch tauri.conf.json resources for Linux
+        run: |
+          cd src-tauri
+          # Replace resources to reference libpdfium.so instead of pdfium.dll
+          python3 -c "
+          import json, sys
+          with open('tauri.conf.json', 'r') as f:
+              conf = json.load(f)
+          conf['bundle']['resources'] = {'libpdfium.so': './'}
+          with open('tauri.conf.json', 'w') as f:
+              json.dump(conf, f, indent=2)
+          print('Patched tauri.conf.json resources for Linux')
+          "
+          echo "Resources config:"
+          python3 -c "import json; print(json.dumps(json.load(open('tauri.conf.json'))['bundle']['resources'], indent=2))"
+
+      # ── 8. Build the Tauri app ───────────────────────────────
+      # Build only .deb and AppImage bundles (skip rpm to avoid
+      # needing rpm tooling). The build will:
+      #   - Run `npm run build` (vite build for frontend)
+      #   - Compile the Rust backend in release mode
+      #   - Bundle into .deb and .AppImage installers
+      - name: Build Tauri app for Linux
+        run: npx tauri build --bundles deb appimage
+        env:
+          # Tauri needs this to skip code signing on CI
+          TAURI_SIGNING_PRIVATE_KEY: ""
+
+      # ── 9. Upload build artifacts ────────────────────────────
+      # Uploads AppImage and .deb so you can download them from
+      # the Actions run page (even without a release tag).
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kiosk-linux-installers
+          path: |
+            Desktop (Tauri)/Kiosk/src-tauri/target/release/bundle/appimage/*.AppImage
+            Desktop (Tauri)/Kiosk/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+      # ── 10. Create GitHub Release (only on tag push) ─────────
+      # When you push a tag like `v0.1.0l`, this creates a GitHub
+      # Release and attaches the Linux installers as downloadable assets.
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Desktop (Tauri)/Kiosk/src-tauri/target/release/bundle/appimage/*.AppImage
+            Desktop (Tauri)/Kiosk/src-tauri/target/release/bundle/deb/*.deb
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

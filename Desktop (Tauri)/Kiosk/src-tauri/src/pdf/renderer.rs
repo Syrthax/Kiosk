@@ -221,15 +221,61 @@ fn bind_pdfium() -> Result<Pdfium, PdfError> {
     
     #[cfg(target_os = "linux")]
     {
+        // Strategy L1: Load from next to executable (AppImage or dev build)
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let so_path = exe_dir.join("libpdfium.so");
+                if so_path.exists() {
+                    match Pdfium::bind_to_library(&so_path) {
+                        Ok(bindings) => {
+                            if !LOGGED_SUCCESS.swap(true, Ordering::Relaxed) {
+                                eprintln!("[Kiosk PDF] Loaded bundled libpdfium.so: {:?}", so_path);
+                            }
+                            return Ok(Pdfium::new(bindings));
+                        }
+                        Err(e) => {
+                            eprintln!("[Kiosk PDF] Failed bundled libpdfium.so: {:?}", e);
+                        }
+                    }
+                }
+
+                // Strategy L2: Try ../lib/kiosk/ (standard .deb install layout)
+                let lib_path = exe_dir.join("../lib/kiosk/libpdfium.so");
+                if let Ok(canonical) = lib_path.canonicalize() {
+                    match Pdfium::bind_to_library(&canonical) {
+                        Ok(bindings) => {
+                            if !LOGGED_SUCCESS.swap(true, Ordering::Relaxed) {
+                                eprintln!("[Kiosk PDF] Loaded libpdfium.so from lib dir: {:?}", canonical);
+                            }
+                            return Ok(Pdfium::new(bindings));
+                        }
+                        Err(e) => {
+                            eprintln!("[Kiosk PDF] Failed lib dir libpdfium.so: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy L3: Try system library path
         if let Ok(bindings) = Pdfium::bind_to_library("libpdfium.so") {
+            if !LOGGED_SUCCESS.swap(true, Ordering::Relaxed) {
+                eprintln!("[Kiosk PDF] Loaded system libpdfium.so");
+            }
             return Ok(Pdfium::new(bindings));
         }
     }
     
     // All strategies failed
-    Err(PdfError::InitError(
-        "Could not load PDFium library. Please ensure libpdfium.dylib is in the app bundle.".to_string()
-    ))
+    #[cfg(target_os = "macos")]
+    let msg = "Could not load PDFium library. Please ensure libpdfium.dylib is in the app bundle.";
+    #[cfg(target_os = "windows")]
+    let msg = "Could not load PDFium library. Please ensure pdfium.dll is alongside the executable.";
+    #[cfg(target_os = "linux")]
+    let msg = "Could not load PDFium library. Please ensure libpdfium.so is installed or bundled with the app.";
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    let msg = "Could not load PDFium library.";
+    Err(PdfError::InitError(msg.to_string()))
 }
 
 /// Load a PDF from a file path and return document info.

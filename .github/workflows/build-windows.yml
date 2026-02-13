@@ -20,7 +20,7 @@ name: Build Windows
 on:
   push:
     branches: [main]
-    tags: ["v*"]           # e.g. v0.1.0, v1.0.0-beta.1
+    tags: ["v*w"]          # e.g. v0.1.0w — Windows releases only
   workflow_dispatch:       # manual trigger from GitHub UI
 
 # Only allow one build per ref at a time; cancel older runs
