@@ -64,7 +64,13 @@
     "windows": {
       "certificateThumbprint": null,
       "timestampUrl": null,
-      "wix": null
+      "wix": null,
+      "nsis": {
+        "installMode": "both"
+      }
+    },
+    "resources": {
+      "pdfium.dll": "./"
     }
   },
   "plugins": {}

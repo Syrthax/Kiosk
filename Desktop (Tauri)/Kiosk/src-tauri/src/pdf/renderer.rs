@@ -189,7 +189,32 @@ fn bind_pdfium() -> Result<Pdfium, PdfError> {
     
     #[cfg(target_os = "windows")]
     {
+        // Strategy W1: Load pdfium.dll from the same directory as the executable
+        // (Tauri bundles resources next to the exe)
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let dll_path = exe_dir.join("pdfium.dll");
+                if dll_path.exists() {
+                    match Pdfium::bind_to_library(dll_path.to_string_lossy()) {
+                        Ok(bindings) => {
+                            if !LOGGED_SUCCESS.swap(true, Ordering::Relaxed) {
+                                eprintln!("[Kiosk PDF] Loaded bundled pdfium.dll: {:?}", dll_path);
+                            }
+                            return Ok(Pdfium::new(bindings));
+                        }
+                        Err(e) => {
+                            eprintln!("[Kiosk PDF] Failed bundled pdfium.dll: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Strategy W2: Fallback — try loading from system PATH
         if let Ok(bindings) = Pdfium::bind_to_library("pdfium.dll") {
+            if !LOGGED_SUCCESS.swap(true, Ordering::Relaxed) {
+                eprintln!("[Kiosk PDF] Loaded pdfium.dll from system PATH");
+            }
             return Ok(Pdfium::new(bindings));
         }
     }
