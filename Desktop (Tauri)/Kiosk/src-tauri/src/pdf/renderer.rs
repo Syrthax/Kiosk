@@ -195,7 +195,7 @@ fn bind_pdfium() -> Result<Pdfium, PdfError> {
             if let Some(exe_dir) = exe_path.parent() {
                 let dll_path = exe_dir.join("pdfium.dll");
                 if dll_path.exists() {
-                    match Pdfium::bind_to_library(dll_path.to_string_lossy()) {
+                    match Pdfium::bind_to_library(&dll_path) {
                         Ok(bindings) => {
                             if !LOGGED_SUCCESS.swap(true, Ordering::Relaxed) {
                                 eprintln!("[Kiosk PDF] Loaded bundled pdfium.dll: {:?}", dll_path);
