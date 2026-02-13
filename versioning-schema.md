@@ -14,6 +14,7 @@ The versioning format for Kiosk follows the pattern:
   - `a`: Android
   - `e`: Chrome Extension
   - `i`: iOS
+  - `l`: Linux (Ubuntu)
 
 ## Examples
 - `v0.1.0w`: Windows version 0.1.0
@@ -21,6 +22,7 @@ The versioning format for Kiosk follows the pattern:
 - `v0.1.0a`: Android version 0.1.0
 - `v1.5e`: Chrome Extension version 1.5
 - `v0.1.0i`: iOS version 0.1.0
+- `v0.1.0l`: Linux version 0.1.0
 
 ## Guidelines
 1. Increment the `<major>` version for breaking changes or significant updates.
