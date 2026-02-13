@@ -382,7 +382,7 @@ function detectPlatform() {
   if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows';
   if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) return 'macos';
   if (/CrOS/i.test(ua)) return 'chrome';
-  if (/Linux/i.test(platform)) return 'windows'; // fallback to Windows for Linux
+  if (/Linux/i.test(platform)) return 'linux';
   return null;
 }
 
