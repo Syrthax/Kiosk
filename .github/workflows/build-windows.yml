@@ -76,25 +76,28 @@ jobs:
 
       # ── 5. Download PDFium for Windows ───────────────────────
       # Your app uses pdfium-render which dynamically loads pdfium.dll
-      # at runtime. We download the pre-built PDFium binary and place
-      # it where the bundled app can find it.
+      # at runtime. We download the pre-built PDFium binary from
+      # bblanchon/pdfium-binaries (the official source recommended by
+      # pdfium-render docs) and place it where Tauri can bundle it.
       - name: Download PDFium for Windows
         shell: pwsh
         run: |
-          $pdfiumUrl = "https://github.com/nicehash/pdfium-binaries/releases/latest/download/pdfium-windows-x64.zip"
-          $zipPath = "$env:TEMP\pdfium-windows-x64.zip"
+          $pdfiumUrl = "https://github.com/bblanchon/pdfium-binaries/releases/latest/download/pdfium-win-x64.tgz"
+          $tgzPath = "$env:TEMP\pdfium-win-x64.tgz"
           $extractPath = "$env:TEMP\pdfium"
 
-          Write-Host "Downloading PDFium for Windows..."
-          Invoke-WebRequest -Uri $pdfiumUrl -OutFile $zipPath
+          Write-Host "Downloading PDFium for Windows from bblanchon/pdfium-binaries..."
+          Invoke-WebRequest -Uri $pdfiumUrl -OutFile $tgzPath
 
-          Write-Host "Extracting..."
-          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+          Write-Host "Extracting .tgz..."
+          New-Item -ItemType Directory -Force -Path $extractPath | Out-Null
+          tar -xzf $tgzPath -C $extractPath
 
-          # Find pdfium.dll (could be in bin/ or lib/ depending on build)
+          # Find pdfium.dll (typically in bin/ directory)
           $dll = Get-ChildItem -Path $extractPath -Recurse -Filter "pdfium.dll" | Select-Object -First 1
           if (-not $dll) {
-            Write-Error "pdfium.dll not found in archive!"
+            Write-Error "pdfium.dll not found in archive! Contents:"
+            Get-ChildItem -Path $extractPath -Recurse | ForEach-Object { Write-Host $_.FullName }
             exit 1
           }
 
@@ -102,7 +105,7 @@ jobs:
           $targetDir = "src-tauri"
           Copy-Item $dll.FullName -Destination "$targetDir\pdfium.dll" -Force
           Write-Host "pdfium.dll copied to $targetDir\pdfium.dll"
-          Write-Host "File size: $((Get-Item "$targetDir\pdfium.dll").Length / 1MB) MB"
+          Write-Host "File size: $([math]::Round((Get-Item "$targetDir\pdfium.dll").Length / 1MB, 2)) MB"
 
       # ── 6. Build the Tauri app ───────────────────────────────
       # `npx tauri build` will:
