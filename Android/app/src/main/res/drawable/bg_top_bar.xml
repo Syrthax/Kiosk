@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Top-bar background: solid near-black with slight transparency. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#F0111111" />
+</shape>

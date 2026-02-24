@@ -1,145 +1,734 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Kiosk Premium PDF Viewer Layout
+  ─────────────────────────────────────────────────────────────────────────
+  Structure
+  ─────
+  • Full-screen ConstraintLayout (edge-to-edge, transparent bars)
+  • ContinuousPdfView  – fills the whole screen, renders pages
+  • AnnotationLayer    – transparent overlay for drawing (GONE by default)
+  • topBar             – slim fixed header: logo | page pill | actions
+  • dockContainer      – floating bottom-center FrameLayout hosting 3 docks
+      └ viewDock          (default visible)
+      └ annotationDock    (swipe-up on viewDock to reveal)
+      └ searchDock        (swipe-left on viewDock to reveal)
+  • appearancePanel    – slides up from dockContainer (GONE by default)
+  • loadingIndicator
+  • errorContainer
+  ─────────────────────────────────────────────────────────────────────────
+-->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/pdf_background"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     tools:context=".ui.PdfViewerActivity">
 
-    <!-- Top Toolbar (must be defined first for constraint reference) -->
-    <LinearLayout
-        android:id="@+id/toolbar"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:background="@color/toolbar_background"
-        android:elevation="4dp"
-        android:gravity="center_vertical"
-        android:minHeight="56dp"
-        android:orientation="horizontal"
-        android:paddingHorizontal="8dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:fitsSystemWindows="true"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <!-- Back Button -->
-        <ImageButton
-            android:id="@+id/backButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/close"
-            android:src="@drawable/ic_back"
-            android:tint="@color/on_primary"
-            app:tint="@color/on_primary" />
-
-        <!-- Title -->
-        <TextView
-            android:id="@+id/titleText"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="8dp"
-            android:layout_weight="1"
-            android:ellipsize="middle"
-            android:singleLine="true"
-            android:textColor="@color/on_primary"
-            android:textSize="18sp"
-            tools:text="Sample Document" />
-
-        <!-- Night Mode Toggle -->
-        <ImageButton
-            android:id="@+id/nightModeButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:alpha="0.6"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/toggle_night_mode"
-            android:src="@drawable/ic_night_mode"
-            android:tint="@color/on_primary"
-            app:tint="@color/on_primary" />
-
-    </LinearLayout>
-
-    <!-- PDF View - constrained below toolbar -->
+    <!-- ══════════════════════════════════════════════
+         PDF canvas (full-screen, behind everything)
+         ══════════════════════════════════════════════ -->
     <com.kiosk.reader.ui.viewer.ContinuousPdfView
         android:id="@+id/pdfView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/bottomBar"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/toolbar" />
-
-    <!-- Bottom Bar -->
-    <LinearLayout
-        android:id="@+id/bottomBar"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:background="@color/toolbar_background"
-        android:elevation="4dp"
-        android:gravity="center"
-        android:minHeight="48dp"
-        android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="8dp"
-        android:fitsSystemWindows="true"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <!-- Zoom Out -->
-        <ImageButton
-            android:id="@+id/zoomOutButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Zoom out"
-            android:src="@drawable/ic_zoom_out"
-            android:tint="@color/on_primary"
-            app:tint="@color/on_primary" />
-
-        <!-- Page Indicator -->
-        <TextView
-            android:id="@+id/pageIndicator"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="16dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:textColor="@color/on_surface"
-            android:textSize="14sp"
-            tools:text="Page 1 of 10" />
-
-        <!-- Zoom In -->
-        <ImageButton
-            android:id="@+id/zoomInButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Zoom in"
-            android:src="@drawable/ic_zoom_in"
-            android:tint="@color/on_primary"
-            app:tint="@color/on_primary" />
-
-    </LinearLayout>
-
-    <!-- Loading Indicator -->
-    <ProgressBar
-        android:id="@+id/loadingIndicator"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:visibility="gone"
-        android:indeterminateTint="@color/secondary"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Error Container -->
+    <!-- ══════════════════════════════════════════════
+         Annotation drawing layer (on top of PDF)
+         ══════════════════════════════════════════════ -->
+    <com.kiosk.reader.ui.viewer.AnnotationLayer
+        android:id="@+id/annotationLayer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- ══════════════════════════════════════════════
+         TOP BAR  (fixed, no shadow, dark glass)
+         ══════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/top_bar_bg"
+        android:gravity="center_vertical"
+        android:minHeight="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- App logo + name -->
+        <ImageView
+            android:id="@+id/appLogo"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:contentDescription="@string/app_name"
+            android:src="@drawable/ic_launcher" />
+
+        <TextView
+            android:id="@+id/appName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.02"
+            android:text="@string/app_name"
+            android:textColor="@color/top_bar_text"
+            android:textSize="16sp" />
+
+        <!-- Spacer -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Page indicator pill (center) -->
+        <TextView
+            android:id="@+id/pageIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_pill"
+            android:fontFamily="sans-serif-medium"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="4dp"
+            android:textColor="@color/pill_text"
+            android:textSize="13sp"
+            tools:text="12 / 64" />
+
+        <!-- Spacer -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Save (cloud upload) -->
+        <ImageButton
+            android:id="@+id/saveButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/ripple_dock_button"
+            android:contentDescription="@string/save_document"
+            android:src="@drawable/ic_save_cloud"
+            android:tint="@color/top_bar_icon"
+            app:tint="@color/top_bar_icon" />
+
+        <!-- Print -->
+        <ImageButton
+            android:id="@+id/printButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/ripple_dock_button"
+            android:contentDescription="@string/print_document"
+            android:src="@drawable/ic_print"
+            android:tint="@color/top_bar_icon"
+            app:tint="@color/top_bar_icon" />
+
+        <!-- More options -->
+        <ImageButton
+            android:id="@+id/moreButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginEnd="2dp"
+            android:background="@drawable/ripple_dock_button"
+            android:contentDescription="@string/more_options"
+            android:src="@drawable/ic_more_vert"
+            android:tint="@color/top_bar_icon"
+            app:tint="@color/top_bar_icon" />
+
+    </LinearLayout>
+
+    <!-- ══════════════════════════════════════════════
+         DOCK CONTAINER  (floating, bottom-center)
+         The three docks live here at the same position;
+         they translate in/out on gesture.
+         ══════════════════════════════════════════════ -->
+    <FrameLayout
+        android:id="@+id/dockContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="0dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- ─────────────────────────────────────
+             APPEARANCE PANEL (above dock, initially GONE)
+             ───────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/appearancePanel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="72dp"
+            android:background="@drawable/bg_appearance_panel"
+            android:elevation="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:visibility="gone">
+
+            <!-- Light mode -->
+            <LinearLayout
+                android:id="@+id/modeLightBtn"
+                android:layout_width="72dp"
+                android:layout_height="48dp"
+                android:background="@drawable/ripple_dock_button"
+                android:gravity="center"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/modeLightLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="☀"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/mode_light"
+                    android:textColor="#AAffffff"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- Dark mode -->
+            <LinearLayout
+                android:id="@+id/modeDarkBtn"
+                android:layout_width="72dp"
+                android:layout_height="48dp"
+                android:background="@drawable/ripple_dock_button"
+                android:gravity="center"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/modeDarkLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="◑"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/mode_dark"
+                    android:textColor="#AAFFFFF0"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- Night mode -->
+            <LinearLayout
+                android:id="@+id/modeNightBtn"
+                android:layout_width="72dp"
+                android:layout_height="48dp"
+                android:background="@drawable/ripple_dock_button"
+                android:gravity="center"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/modeNightLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌙"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/mode_night"
+                    android:textColor="#AAFFFFF0"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- ─────────────────────────────────────
+             VIEW DOCK  (default visible)
+             ───────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/viewDock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:background="@drawable/bg_dock"
+            android:elevation="16dp"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp"
+            android:gravity="center_horizontal">
+
+            <!-- Drag handle - 32dp touch target, 5dp visual pill centred inside -->
+            <View
+                android:id="@+id/viewDockHandle"
+                android:layout_width="40dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_dock_handle_touch" />
+
+            <HorizontalScrollView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4dp"
+                android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="8dp">
+
+                <!-- Search -->
+                <ImageButton
+                    android:id="@+id/dockSearch"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/search"
+                    android:src="@drawable/ic_search"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="6dp"
+                    android:background="@color/dock_divider" />
+
+                <!-- Zoom out -->
+                <ImageButton
+                    android:id="@+id/dockZoomOut"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/zoom_out"
+                    android:src="@drawable/ic_zoom_out"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Zoom percentage -->
+                <TextView
+                    android:id="@+id/dockZoomPercent"
+                    android:layout_width="52dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:textColor="@color/dock_icon_dark"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    tools:text="100%" />
+
+                <!-- Zoom in -->
+                <ImageButton
+                    android:id="@+id/dockZoomIn"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/zoom_in"
+                    android:src="@drawable/ic_zoom_in"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="6dp"
+                    android:background="@color/dock_divider" />
+
+                <!-- Previous page -->
+                <ImageButton
+                    android:id="@+id/dockPrevPage"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/previous_page"
+                    android:src="@drawable/ic_navigate_before"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Next page -->
+                <ImageButton
+                    android:id="@+id/dockNextPage"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/next_page"
+                    android:src="@drawable/ic_navigate_next"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="6dp"
+                    android:background="@color/dock_divider" />
+
+                <!-- Appearance -->
+                <ImageButton
+                    android:id="@+id/dockAppearance"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/appearance"
+                    android:src="@drawable/ic_appearance"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Options -->
+                <ImageButton
+                    android:id="@+id/dockOptions"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/options"
+                    android:src="@drawable/ic_tune"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+            </LinearLayout>
+            </HorizontalScrollView>
+        </LinearLayout>
+
+        <!-- ─────────────────────────────────────
+             ANNOTATION DOCK  (hidden, swipe-up to show)
+             ───────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/annotationDock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:background="@drawable/bg_dock"
+            android:elevation="16dp"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp"
+            android:gravity="center_horizontal"
+            android:visibility="gone">
+
+            <!-- Drag handle - 32dp touch target, 5dp visual pill centred inside -->
+            <View
+                android:id="@+id/annotationDockHandle"
+                android:layout_width="40dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_dock_handle_touch" />
+
+            <HorizontalScrollView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4dp"
+                android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/annotationDockInner"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="8dp">
+
+                <!-- Pen -->
+                <ImageButton
+                    android:id="@+id/toolPen"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_tool_selected"
+                    android:contentDescription="@string/tool_pen"
+                    android:src="@drawable/ic_pen"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Highlight -->
+                <ImageButton
+                    android:id="@+id/toolHighlight"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/tool_highlight"
+                    android:src="@drawable/ic_highlight"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Eraser -->
+                <ImageButton
+                    android:id="@+id/toolEraser"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/tool_eraser"
+                    android:src="@drawable/ic_eraser"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Shapes -->
+                <ImageButton
+                    android:id="@+id/toolShapes"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/tool_shapes"
+                    android:src="@drawable/ic_shapes"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="6dp"
+                    android:background="@color/dock_divider" />
+
+                <!-- Color swatches row -->
+                <ImageButton
+                    android:id="@+id/colorRed"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginHorizontal="3dp"
+                    android:background="@null"
+                    android:contentDescription="Red"
+                    android:src="@drawable/ic_swatch_red" />
+
+                <!-- Blue swatch (tinted on the fly) -->
+                <ImageButton
+                    android:id="@+id/colorBlue"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginHorizontal="3dp"
+                    android:background="@null"
+                    android:contentDescription="Blue"
+                    android:src="@drawable/ic_swatch_red"
+                    android:tint="@color/annot_blue"
+                    app:tint="@color/annot_blue" />
+
+                <!-- Yellow swatch -->
+                <ImageButton
+                    android:id="@+id/colorYellow"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginHorizontal="3dp"
+                    android:background="@null"
+                    android:contentDescription="Yellow"
+                    android:src="@drawable/ic_swatch_red"
+                    android:tint="@color/annot_yellow"
+                    app:tint="@color/annot_yellow" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="6dp"
+                    android:background="@color/dock_divider" />
+
+                <!-- Stroke size decrease -->
+                <ImageButton
+                    android:id="@+id/strokeDown"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="Decrease stroke"
+                    android:src="@drawable/ic_zoom_out"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Stroke size label -->
+                <TextView
+                    android:id="@+id/strokeSizeLabel"
+                    android:layout_width="36dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="2.5"
+                    android:textColor="@color/dock_icon_dark"
+                    android:textSize="11sp" />
+
+                <!-- Stroke size increase -->
+                <ImageButton
+                    android:id="@+id/strokeUp"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="Increase stroke"
+                    android:src="@drawable/ic_zoom_in"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="6dp"
+                    android:background="@color/dock_divider" />
+
+                <!-- Undo -->
+                <ImageButton
+                    android:id="@+id/annotUndo"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/undo"
+                    android:src="@drawable/ic_undo"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Redo -->
+                <ImageButton
+                    android:id="@+id/annotRedo"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/ripple_dock_button"
+                    android:contentDescription="@string/redo"
+                    android:src="@drawable/ic_redo"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="24dp"
+                    android:layout_marginHorizontal="6dp"
+                    android:background="@color/dock_divider" />
+
+                <!-- Done -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/annotDone"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:backgroundTint="@color/accent"
+                    android:text="@string/done_annotating"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="13sp"
+                    app:cornerRadius="18dp"
+                    app:icon="@drawable/ic_check"
+                    app:iconTint="#FFFFFFFF" />
+
+            </LinearLayout>
+            </HorizontalScrollView>
+        </LinearLayout>
+
+        <!-- ─────────────────────────────────────
+             SEARCH DOCK  (hidden, swipe-left to show)
+             ───────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/searchDock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:background="@drawable/bg_dock"
+            android:elevation="16dp"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp"
+            android:gravity="center_horizontal"
+            android:visibility="gone">
+
+            <!-- Drag handle - 32dp touch target, 5dp visual pill centred inside -->
+            <View
+                android:id="@+id/searchDockHandle"
+                android:layout_width="40dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_dock_handle_touch" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp">
+
+            <!-- Close search -->
+            <ImageButton
+                android:id="@+id/searchClose"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/ripple_dock_button"
+                android:contentDescription="@string/close_search"
+                android:src="@drawable/ic_close_small"
+                android:tint="@color/dock_icon_dark"
+                app:tint="@color/dock_icon_dark" />
+
+            <!-- Search input -->
+            <EditText
+                android:id="@+id/searchInput"
+                android:layout_width="160dp"
+                android:layout_height="36dp"
+                android:layout_marginHorizontal="6dp"
+                android:background="@null"
+                android:fontFamily="sans-serif"
+                android:hint="@string/search_hint"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:textColor="@color/dock_icon_dark"
+                android:textColorHint="#60FFFFFF"
+                android:textSize="14sp" />
+
+            <!-- Match count -->
+            <TextView
+                android:id="@+id/searchMatchCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
+                android:textColor="#80FFFFFF"
+                android:textSize="11sp"
+                tools:text="12 matches" />
+
+            <!-- Prev match -->
+            <ImageButton
+                android:id="@+id/searchPrev"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/ripple_dock_button"
+                android:contentDescription="@string/previous_match"
+                android:src="@drawable/ic_navigate_before"
+                android:tint="@color/dock_icon_dark"
+                app:tint="@color/dock_icon_dark" />
+
+            <!-- Next match -->
+            <ImageButton
+                android:id="@+id/searchNext"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/ripple_dock_button"
+                android:contentDescription="@string/next_match"
+                android:src="@drawable/ic_navigate_next"
+                android:tint="@color/dock_icon_dark"
+                app:tint="@color/dock_icon_dark" />
+
+            </LinearLayout>
+        </LinearLayout>
+
+    </FrameLayout>
+
+    <!-- ══════════════════════════════════════════════
+         Loading indicator (centered)
+         ══════════════════════════════════════════════ -->
+    <ProgressBar
+        android:id="@+id/loadingIndicator"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:indeterminateTint="@color/accent"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- ══════════════════════════════════════════════
+         Error container (centered)
+         ══════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/errorContainer"
         android:layout_width="0dp"
@@ -153,17 +742,15 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <!-- Error Icon -->
         <ImageView
             android:layout_width="64dp"
             android:layout_height="64dp"
             android:layout_marginBottom="16dp"
+            android:contentDescription="Error"
             android:src="@drawable/ic_error"
             android:tint="@color/error"
-            app:tint="@color/error"
-            android:contentDescription="Error" />
+            app:tint="@color/error" />
 
-        <!-- Error Text -->
         <TextView
             android:id="@+id/errorText"
             android:layout_width="wrap_content"
@@ -174,7 +761,6 @@
             android:textSize="16sp"
             tools:text="Error loading PDF" />
 
-        <!-- Buttons -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

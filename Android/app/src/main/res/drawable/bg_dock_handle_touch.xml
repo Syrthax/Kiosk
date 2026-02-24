@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dock drag handle – proper 32dp touch target with a 5dp visual pill centred inside.
+  Using a layer-list item with android:gravity="center_vertical" and android:height="5dp"
+  restricts the visual fill to 5dp while the View itself occupies 32dp (touchable area).
+  Works from API 21+.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:gravity="center_vertical"
+        android:height="5dp">
+        <shape>
+            <!-- ~70% opaque white, matches original handle colour -->
+            <solid android:color="#B3FFFFFF" />
+            <!-- Full corner radius = capsule shape -->
+            <corners android:radius="3dp" />
+        </shape>
+    </item>
+</layer-list>

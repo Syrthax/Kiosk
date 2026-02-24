@@ -32,7 +32,8 @@
             android:name=".ui.PdfViewerActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
-            android:theme="@style/Theme.Kiosk">
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Kiosk.PdfViewer">
             
             <!-- Open PDF files from file managers -->
             <intent-filter>

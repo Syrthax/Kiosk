@@ -1,40 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Kiosk Brand Colors: Red + White (Light Mode) / Red + Black (Dark Mode) -->
-    
-    <!-- Primary brand color - Kiosk Red -->
+    <!-- ================================================================
+         Kiosk Brand Colors — Light Mode defaults
+         ================================================================ -->
+
+    <!-- Brand -->
     <color name="kiosk_red">#E53935</color>
     <color name="kiosk_red_dark">#C62828</color>
     <color name="kiosk_red_light">#EF5350</color>
-    
-    <!-- Light Mode Colors (default) -->
+
+    <!-- Material primary -->
     <color name="primary">#E53935</color>
     <color name="primary_variant">#C62828</color>
     <color name="secondary">#E53935</color>
     <color name="secondary_variant">#C62828</color>
-    
-    <!-- Background colors - Light Mode -->
+
+    <!-- Light Mode backgrounds -->
     <color name="background">#FFFFFF</color>
     <color name="surface">#FFFFFF</color>
     <color name="surface_variant">#F5F5F5</color>
-    
-    <!-- Text colors - Light Mode -->
+
+    <!-- Light Mode text -->
     <color name="on_primary">#FFFFFF</color>
     <color name="on_secondary">#FFFFFF</color>
     <color name="on_background">#1A1A1A</color>
     <color name="on_surface">#1A1A1A</color>
     <color name="on_surface_variant">#666666</color>
-    
-    <!-- Status colors -->
+
+    <!-- Status -->
     <color name="error">#B00020</color>
     <color name="on_error">#FFFFFF</color>
-    
-    <!-- PDF Viewer specific - Light Mode -->
-    <color name="pdf_background">#F0F0F0</color>
+
+    <!-- PDF Viewer – Light Mode -->
+    <color name="pdf_background">#EBEBEB</color>
     <color name="page_background">#FFFFFF</color>
-    <color name="toolbar_background">#E53935</color>
-    
-    <!-- Accent colors -->
+    <color name="toolbar_background">#111111</color>
+
+    <!-- Accent / ripple -->
     <color name="accent">#E53935</color>
     <color name="ripple_color">#33E53935</color>
+
+    <!-- ================================================================
+         Trio Dock –  always dark-glass regardless of mode
+         ================================================================ -->
+    <color name="dock_bg_dark">#D01C1C1E</color>
+    <color name="dock_bg_light">#D0F2F2F7</color>
+    <color name="dock_icon_dark">#FFFFFFFF</color>
+    <color name="dock_icon_light">#FF1C1C1E</color>
+    <color name="dock_divider">#28FFFFFF</color>
+
+    <!-- Top-bar -->
+    <color name="top_bar_bg">#F0111111</color>
+    <color name="top_bar_text">#FFFFFFFF</color>
+    <color name="top_bar_icon">#CCFFFFFF</color>
+
+    <!-- Page-indicator pill -->
+    <color name="pill_bg">#80000000</color>
+    <color name="pill_text">#FFFFFFFF</color>
+
+    <!-- Annotation tool colours -->
+    <color name="annot_red">#FF4757</color>
+    <color name="annot_blue">#2979FF</color>
+    <color name="annot_yellow">#FFD600</color>
+    <color name="annot_green">#00E676</color>
+    <color name="annot_black">#FF000000</color>
+    <color name="annot_white">#FFFFFFFF</color>
+
+    <!-- Appearance panel –– night overlay -->
+    <color name="night_overlay">#CC0A0A12</color>
 </resources>

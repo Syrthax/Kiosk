@@ -94,6 +94,8 @@ class ContinuousPdfView @JvmOverloads constructor(
     var onPageChanged: ((Int, Int) -> Unit)? = null
     var onLoadingStateChanged: ((Boolean) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
+    /** Fired whenever scrollY or scale changes so overlays (e.g. AnnotationLayer) can redraw. */
+    var onTransformChanged: (() -> Unit)? = null
 
     // Current visible page
     private var currentVisiblePage: Int = 0
@@ -314,6 +316,7 @@ class ContinuousPdfView @JvmOverloads constructor(
                 scrollY = (newContentY - focusY).coerceIn(0f, maxScrollY())
                 
                 invalidate()
+                updateCurrentPage()
                 
                 if (progress >= 1f) break
                 delay(16)
@@ -375,6 +378,25 @@ class ContinuousPdfView @JvmOverloads constructor(
 
     fun getCurrentPage(): Int = currentVisiblePage
     fun getPageCount(): Int = pageCount
+
+    // ──────────────────────────────────────────────────────────────────────
+    // State accessors for AnnotationLayer coordinate mapping
+    // ──────────────────────────────────────────────────────────────────────
+
+    /** Current vertical scroll offset in pixel content-space. */
+    fun getPdfScrollY(): Float = scrollY
+
+    /** Current display scale applied to PDF pages. */
+    fun getScale(): Float = scale
+
+    /** Vertical gap between pages in pixels. */
+    fun getPageGapPx(): Int = pageGap
+
+    /**
+     * Snapshot of page dimensions (originalWidth x originalHeight in PDF units).
+     * Returned list is a defensive copy – safe to iterate off the main thread.
+     */
+    fun getPageDimensionsList(): List<Pair<Int, Int>> = pageDimensions.toList()
 
     fun goToPage(pageIndex: Int) {
         if (pageIndex < 0 || pageIndex >= pageCount) return
@@ -442,6 +464,7 @@ class ContinuousPdfView @JvmOverloads constructor(
                     currentVisiblePage = i
                     onPageChanged?.invoke(currentVisiblePage, pageCount)
                 }
+                onTransformChanged?.invoke()
                 return
             }
             accumulatedHeight += pageHeight
@@ -451,6 +474,7 @@ class ContinuousPdfView @JvmOverloads constructor(
             currentVisiblePage = pageCount - 1
             onPageChanged?.invoke(currentVisiblePage, pageCount)
         }
+        onTransformChanged?.invoke()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {

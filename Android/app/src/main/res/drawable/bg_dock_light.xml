@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Glassmorphism dock background – light variant (light mode). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#D0F2F2F7" />
+    <corners android:radius="28dp" />
+    <stroke
+        android:width="0.75dp"
+        android:color="#20000000" />
+</shape>
