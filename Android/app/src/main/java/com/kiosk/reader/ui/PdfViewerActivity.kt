@@ -4,22 +4,24 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.database.Cursor
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.print.PrintManager
+import android.provider.OpenableColumns
 import android.text.InputType
-import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
-import android.view.VelocityTracker
 import android.view.View
-import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -30,13 +32,16 @@ import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import com.kiosk.reader.R
+import com.kiosk.reader.data.RecentPdfsManager
 import com.kiosk.reader.databinding.ActivityPdfViewerBinding
+import com.kiosk.reader.pdf.PdfAnnotationWriter
 import com.kiosk.reader.pdf.PdfDocument
 import com.kiosk.reader.ui.viewer.AnnotationLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -77,25 +82,30 @@ class PdfViewerActivity : AppCompatActivity() {
     private var selectedAnnotationColor: Int = Color.RED
     private var selectedStrokeWidth: Float = 2.5f
 
-    // ─── Dock animation ────────────────────────────────────────────────────
-    private val DOCK_ANIM_MS = 260L
-    private val DOCK_INTERP  = DecelerateInterpolator(2.2f)
+    // ─── Trio Dock switcher (gesture-driven state machine) ───────────────
+    private lateinit var trioDockSwitcher: TrioDockSwitcher
 
     // ─── Dock vertical position controller ────────────────────────────────
     private lateinit var dockPositionController: DockPositionController
     private var dockNavInsets = 0
     private val DOCK_BOTTOM_MARGIN_DP = 28
-    private var dockVelocityTracker: VelocityTracker? = null
-
-    // ─── Gesture detection for dock switching ──────────────────────────────
-    private lateinit var dockGestureDetector: GestureDetector
-    private var dockGestureStartX = 0f
-    private var dockGestureStartY = 0f
-    private val SWIPE_VELOCITY_THRESHOLD = 400f
-    private val SWIPE_DISTANCE_THRESHOLD = 60f  // dp → px later
 
     // ─── Zoom percentage update throttle ──────────────────────────────────
     private var lastReportedScale = -1f
+
+    // ─── Auto-hide header / dock on fast scroll ──────────────────────────
+    private var uiHidden = false
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val showUIRunnable = Runnable { showChromeUI() }
+    private companion object { const val SCROLL_HIDE_THRESHOLD = 18f }
+
+    // ─── Recent PDFs tracker ─────────────────────────────────────────────
+    private lateinit var recentPdfsManager: RecentPdfsManager
+
+    // ─── SAF launcher for saving annotated PDF ──────────────────────────
+    private val saveAnnotatedPdfLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri -> uri?.let { writeAnnotatedPdf(it) } }
 
     // ══════════════════════════════════════════════════════════════════════
     // Lifecycle
@@ -110,10 +120,11 @@ class PdfViewerActivity : AppCompatActivity() {
         binding = ActivityPdfViewerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        recentPdfsManager = RecentPdfsManager(this)
+
         applyWindowInsets()
         setupTopBar()
-        setupDockPositionGestures()
-        setupDockGestures()
+        setupTrioDockSwitcher()
         setupViewDock()
         setupAnnotationDock()
         setupSearchDock()
@@ -131,11 +142,11 @@ class PdfViewerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        uiHandler.removeCallbacks(showUIRunnable)
         binding.pdfView.release()
         currentDocument?.close()
         currentDocument = null
-        dockVelocityTracker?.recycle()
-        dockVelocityTracker = null
+        if (::trioDockSwitcher.isInitialized) trioDockSwitcher.release()
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -175,83 +186,90 @@ class PdfViewerActivity : AppCompatActivity() {
     // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Attaches a VelocityTracker-backed touch listener to every dock handle.
-     * The listener updates [dockPositionController] in real time and snaps on release.
+     * Initialises the [TrioDockSwitcher] state machine and wires its touch
+     * listeners to every dock handle and the dock container body.
      *
-     * Only the drag handle views receive these gestures.  All other dock views
-     * continue to function normally (buttons etc.).
+     * Dock order:  0 = View  ·  1 = Annotation  ·  2 = Search
+     *
+     * Handle drags and body drags both drive the same switcher:
+     *   • Vertical gesture → drag-follow + threshold-based dock switch
+     *   • Horizontal gesture → fling detection for VIEW ↔ SEARCH shortcut
      */
     @SuppressLint("ClickableViewAccessibility")
-    private fun setupDockPositionGestures() {
-        val handles = listOf(
-            binding.viewDockHandle,
-            binding.annotationDockHandle,
-            binding.searchDockHandle
+    private fun setupTrioDockSwitcher() {
+        trioDockSwitcher = TrioDockSwitcher(
+            docks = listOf(binding.viewDock, binding.annotationDock, binding.searchDock),
+            onDockWillChange = { _, _ -> },
+            onDockDidChange  = { from, to -> onDockTransitionComplete(from, to) }
         )
 
-        val listener = View.OnTouchListener { v, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    dockVelocityTracker?.recycle()
-                    dockVelocityTracker = VelocityTracker.obtain()
-                    addMovementWithRawCoords(event)
-                    if (::dockPositionController.isInitialized) {
-                        dockPositionController.onDragStart(event.rawY)
-                    }
-                    v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    true
+        // Horizontal fling: VIEW ↔ SEARCH shortcut
+        trioDockSwitcher.onHorizontalFling = { isLeftFling ->
+            when {
+                isLeftFling && activeDock == DockMode.VIEW -> {
+                    binding.dockContainer.performHapticFeedback(
+                        HapticFeedbackConstants.KEYBOARD_TAP
+                    )
+                    switchDock(DockMode.SEARCH)
                 }
-
-                MotionEvent.ACTION_MOVE -> {
-                    addMovementWithRawCoords(event)
-                    if (::dockPositionController.isInitialized) {
-                        dockPositionController.onDrag(event.rawY)
-                    }
-                    true
+                !isLeftFling && activeDock == DockMode.SEARCH -> {
+                    binding.dockContainer.performHapticFeedback(
+                        HapticFeedbackConstants.KEYBOARD_TAP
+                    )
+                    switchDock(DockMode.VIEW)
                 }
-
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val vy = dockVelocityTracker?.let { vt ->
-                        addMovementWithRawCoords(event)
-                        vt.computeCurrentVelocity(1000)  // px/s, in raw-coord space
-                        val v2 = vt.yVelocity
-                        vt.recycle()
-                        dockVelocityTracker = null
-                        v2
-                    } ?: 0f
-
-                    if (::dockPositionController.isInitialized) {
-                        dockPositionController.onDragEnd(vy)
-                    }
-                    v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    true
-                }
-
-                else -> false
             }
         }
 
-        handles.forEach { handle ->
-            handle.setOnTouchListener(listener)
+        // Touch listener shared by all handles
+        val handleListener = View.OnTouchListener { v, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            }
+            trioDockSwitcher.onTouchEvent(event)
+        }
+        binding.viewDockHandle.setOnTouchListener(handleListener)
+        binding.annotationDockHandle.setOnTouchListener(handleListener)
+        binding.searchDockHandle.setOnTouchListener(handleListener)
+
+        // Dock body (empty space between buttons) also drives the switcher
+        binding.dockContainer.setOnTouchListener { _, event ->
+            trioDockSwitcher.onTouchEvent(event)
         }
     }
 
     /**
-     * Add a MotionEvent to the VelocityTracker using raw (screen) coordinates.
-     *
-     * VelocityTracker.addMovement() uses event.x/event.y (view-local).  As the
-     * dock container translates, the handle's screen position changes, so
-     * event.y drifts without the finger moving — giving wrong velocity.  Offsetting
-     * to rawX/rawY before adding ensures the velocity is in screen coordinates,
-     * matching the rawY values passed to DockPositionController.onDrag().
+     * Called by [TrioDockSwitcher] when a dock transition animation completes.
+     * Handles mode side-effects: annotation layer, keyboard, appearance panel.
      */
-    private fun addMovementWithRawCoords(event: MotionEvent) {
-        val vt = dockVelocityTracker ?: return
-        val dx = event.rawX - event.x
-        val dy = event.rawY - event.y
-        event.offsetLocation(dx, dy)   // event.x == event.rawX temporarily
-        vt.addMovement(event)
-        event.offsetLocation(-dx, -dy) // restore to original coordinates
+    private fun onDockTransitionComplete(fromIndex: Int, toIndex: Int) {
+        val fromMode = dockModeForIndex(fromIndex)
+        val toMode   = dockModeForIndex(toIndex)
+        activeDock = toMode
+
+        // Exit previous mode
+        if (fromMode == DockMode.ANNOTATION && toMode != DockMode.ANNOTATION) {
+            exitAnnotationMode()
+        }
+
+        // Enter new mode
+        when (toMode) {
+            DockMode.ANNOTATION -> enterAnnotationMode()
+            DockMode.VIEW       -> hideKeyboardIfVisible()
+            DockMode.SEARCH     -> {
+                binding.searchInput.requestFocus()
+                showKeyboard(binding.searchInput)
+            }
+        }
+
+        if (appearancePanelVisible) dismissAppearancePanel()
+    }
+
+    private fun dockModeForIndex(index: Int): DockMode = when (index) {
+        0    -> DockMode.VIEW
+        1    -> DockMode.ANNOTATION
+        2    -> DockMode.SEARCH
+        else -> DockMode.VIEW
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -262,32 +280,76 @@ class PdfViewerActivity : AppCompatActivity() {
         binding.saveButton.setOnClickListener { saveDocument() }
         binding.printButton.setOnClickListener { printDocument() }
         binding.moreButton.setOnClickListener { showMoreOptions() }
+
+        // Problem 8: Clicking logo navigates back to home
+        binding.appLogo.setOnClickListener {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
+        }
+        binding.appName.setOnClickListener { binding.appLogo.performClick() }
     }
 
-    // ─── Save with cloud-fill confirmation animation ───────────────────────
+    // ─── Save with real PDF annotation writing ──────────────────────────
 
     private fun saveDocument() {
-        // Animate: scale up → scale down, tint to accent then back
+        // Animate save button
         val scaleUpX   = ObjectAnimator.ofFloat(binding.saveButton, "scaleX", 1f, 1.3f)
         val scaleUpY   = ObjectAnimator.ofFloat(binding.saveButton, "scaleY", 1f, 1.3f)
         val scaleDownX = ObjectAnimator.ofFloat(binding.saveButton, "scaleX", 1.3f, 1f)
         val scaleDownY = ObjectAnimator.ofFloat(binding.saveButton, "scaleY", 1.3f, 1f)
         val upSet   = AnimatorSet().apply { playTogether(scaleUpX, scaleUpY); duration = 120 }
         val downSet = AnimatorSet().apply { playTogether(scaleDownX, scaleDownY); duration = 200 }
-        AnimatorSet().apply {
-            playSequentially(upSet, downSet)
-            start()
-        }
+        AnimatorSet().apply { playSequentially(upSet, downSet); start() }
 
-        // Tint momentarily to accent red then back to normal
         binding.saveButton.setColorFilter(ContextCompat.getColor(this, R.color.accent))
         lifecycleScope.launch {
             delay(600)
             binding.saveButton.clearColorFilter()
         }
 
-        // TODO: Persist annotation layer bitmap to file alongside PDF
-        showBriefToast(getString(R.string.document_saved))
+        // Check if there are annotations to save
+        val strokes = binding.annotationLayer.getStrokes()
+        if (strokes.isEmpty()) {
+            showBriefToast(getString(R.string.no_annotations))
+            return
+        }
+
+        // Launch SAF file picker to choose output location
+        val suggestedName = (title?.toString() ?: "document") + "_annotated.pdf"
+        saveAnnotatedPdfLauncher.launch(suggestedName)
+    }
+
+    private fun writeAnnotatedPdf(outputUri: Uri) {
+        val sourceUri = currentUri ?: return
+        val strokes = binding.annotationLayer.getStrokes()
+        if (strokes.isEmpty()) return
+
+        lifecycleScope.launch {
+            val success = withContext(Dispatchers.IO) {
+                try {
+                    val tempOut = File(cacheDir, "annot_out_${System.currentTimeMillis()}.pdf")
+                    val result = PdfAnnotationWriter.saveAnnotations(
+                        this@PdfViewerActivity, sourceUri, strokes, tempOut
+                    )
+                    if (result) {
+                        // Copy temp file to the SAF URI
+                        contentResolver.openOutputStream(outputUri)?.use { out ->
+                            tempOut.inputStream().use { inp -> inp.copyTo(out) }
+                        }
+                        tempOut.delete()
+                        true
+                    } else false
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+            showBriefToast(getString(
+                if (success) R.string.save_success else R.string.save_failed
+            ))
+        }
     }
 
     private fun printDocument() {
@@ -354,12 +416,13 @@ class PdfViewerActivity : AppCompatActivity() {
     }
 
     private fun showMoreOptions() {
-        val options = arrayOf("Go to page…", "About")
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        val options = arrayOf("Go to page\u2026", "PDF Info", "About")
+        AlertDialog.Builder(this)
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> showGoToPageDialog()
-                    1 -> showBriefToast("Kiosk – Premium PDF Reader")
+                    1 -> showPdfInfoDialog()
+                    2 -> showBriefToast("Kiosk \u2013 Premium PDF Reader")
                 }
             }
             .show()
@@ -367,11 +430,11 @@ class PdfViewerActivity : AppCompatActivity() {
 
     private fun showGoToPageDialog() {
         val count = binding.pdfView.getPageCount()
-        val input = android.widget.EditText(this).apply {
-            hint = "1 – $count"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        val input = EditText(this).apply {
+            hint = "1 \u2013 $count"
+            inputType = InputType.TYPE_CLASS_NUMBER
         }
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Go to page")
             .setView(input)
             .setPositiveButton("Go") { _, _ ->
@@ -384,202 +447,75 @@ class PdfViewerActivity : AppCompatActivity() {
             .show()
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // DOCK GESTURE DETECTION
-    // ══════════════════════════════════════════════════════════════════════
+    // ─── PDF Info Dialog (Problem 7) ───────────────────────────────────
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupDockGestures() {
-        val swipeThresholdPx = (SWIPE_DISTANCE_THRESHOLD * resources.displayMetrics.density)
+    private fun showPdfInfoDialog() {
+        val uri = currentUri ?: return
+        val pageCount = binding.pdfView.getPageCount()
 
-        dockGestureDetector = GestureDetector(
-            this,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(e: MotionEvent): Boolean = true
+        // Query file metadata via ContentResolver
+        var displayName = title?.toString() ?: "Unknown"
+        var fileSize = "Unknown"
+        var location = uri.toString()
 
-                override fun onFling(
-                    e1: MotionEvent?,
-                    e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float
-                ): Boolean {
-                    val dX = e2.x - (e1?.x ?: e2.x)
-                    val dY = e2.y - (e1?.y ?: e2.y)
-
-                    // Determine dominant axis
-                    return when {
-                        // Vertical fling
-                        abs(dY) > abs(dX) -> {
-                            when {
-                                dY < -swipeThresholdPx &&
-                                        abs(velocityY) > SWIPE_VELOCITY_THRESHOLD &&
-                                        activeDock == DockMode.VIEW -> {
-                                    // Swipe UP on View dock → Annotation dock
-                                    binding.dockContainer.performHapticFeedback(
-                                        HapticFeedbackConstants.KEYBOARD_TAP
-                                    )
-                                    switchDock(DockMode.ANNOTATION)
-                                    true
-                                }
-                                dY > swipeThresholdPx &&
-                                        abs(velocityY) > SWIPE_VELOCITY_THRESHOLD &&
-                                        activeDock == DockMode.ANNOTATION -> {
-                                    // Swipe DOWN on Annotation dock → View dock
-                                    binding.dockContainer.performHapticFeedback(
-                                        HapticFeedbackConstants.KEYBOARD_TAP
-                                    )
-                                    switchDock(DockMode.VIEW)
-                                    true
-                                }
-                                else -> false
-                            }
-                        }
-                        // Horizontal fling
-                        abs(dX) > abs(dY) -> {
-                            when {
-                                dX < -swipeThresholdPx &&
-                                        abs(velocityX) > SWIPE_VELOCITY_THRESHOLD &&
-                                        activeDock == DockMode.VIEW -> {
-                                    // Swipe LEFT on View dock → Search dock
-                                    binding.dockContainer.performHapticFeedback(
-                                        HapticFeedbackConstants.KEYBOARD_TAP
-                                    )
-                                    switchDock(DockMode.SEARCH)
-                                    true
-                                }
-                                dX > swipeThresholdPx &&
-                                        abs(velocityX) > SWIPE_VELOCITY_THRESHOLD &&
-                                        activeDock == DockMode.SEARCH -> {
-                                    // Swipe RIGHT on Search dock → View dock
-                                    binding.dockContainer.performHapticFeedback(
-                                        HapticFeedbackConstants.KEYBOARD_TAP
-                                    )
-                                    switchDock(DockMode.VIEW)
-                                    true
-                                }
-                                else -> false
-                            }
-                        }
-                        else -> false
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx >= 0) displayName = cursor.getString(nameIdx) ?: displayName
+                    val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (sizeIdx >= 0) {
+                        val bytes = cursor.getLong(sizeIdx)
+                        fileSize = formatFileSize(bytes)
                     }
                 }
             }
-        )
+        } catch (_: Exception) { }
 
-        // Attach gesture detector to the dock container.
-        // IMPORTANT: return the detector's result (not 'false') so the ViewGroup
-        // claims ownership of the gesture sequence and receives subsequent MOVE/UP
-        // events.  Returning 'false' here meant only ACTION_DOWN was ever processed,
-        // so swipe-to-switch-mode was silently broken.
-        binding.dockContainer.setOnTouchListener { _, event ->
-            dockGestureDetector.onTouchEvent(event)
+        // Try to get a cleaner path from the URI
+        uri.path?.let { p ->
+            if (p.isNotBlank()) location = p
         }
+
+        val message = buildString {
+            append(getString(R.string.pdf_name_label)).append(": ").append(displayName).append("\n\n")
+            append(getString(R.string.pdf_size_label)).append(": ").append(fileSize).append("\n\n")
+            append(getString(R.string.pdf_location_label)).append(": ").append(location).append("\n\n")
+            append(getString(R.string.pdf_pages_label)).append(": ").append(pageCount)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.pdf_info_title))
+            .setMessage(message)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun formatFileSize(bytes: Long): String = when {
+        bytes < 1024        -> "$bytes B"
+        bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024f)
+        else                -> "%.1f MB".format(bytes / (1024f * 1024f))
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // DOCK SWITCHING ANIMATION
+    // DOCK SWITCHING  (delegated to TrioDockSwitcher state machine)
     // ══════════════════════════════════════════════════════════════════════
 
     /**
-     * Physically replaces the current dock with [target] using a directional
-     * slide animation.  The motion direction follows the design:
-     *   VIEW → ANNOTATION : slide up
-     *   ANNOTATION → VIEW : slide down
-     *   VIEW → SEARCH     : slide left
-     *   SEARCH → VIEW     : slide right
+     * Programmatic dock switch — delegates to [TrioDockSwitcher.animateToIndex]
+     * which drives the spring-animated card-style transition.  Side-effects
+     * (annotation layer, keyboard, appearance panel) fire via the
+     * [onDockTransitionComplete] callback when the animation settles.
      */
     private fun switchDock(target: DockMode) {
         if (target == activeDock) return
-
-        val outDock = dockViewFor(activeDock)
-        val inDock  = dockViewFor(target)
-
-        // Cancel any in-flight animations on ALL dock views before starting new
-        // ones.  Without this, rapid mode-switching leaves stale translationX/Y
-        // values when the interrupted animation's withEndAction fires late.
-        binding.viewDock.animate().cancel()
-        binding.annotationDock.animate().cancel()
-        binding.searchDock.animate().cancel()
-
-        // Reset every dock view to a clean state; the outgoing dock's exit
-        // animation will move it off-screen, and the incoming dock's enter
-        // animation will bring it in from off-screen below/beside.
-        binding.viewDock.apply      { translationX = 0f; translationY = 0f; alpha = if (this == outDock) 1f else 0f }
-        binding.annotationDock.apply{ translationX = 0f; translationY = 0f; alpha = if (this == outDock) 1f else 0f }
-        binding.searchDock.apply    { translationX = 0f; translationY = 0f; alpha = if (this == outDock) 1f else 0f }
-
-        // Decide direction
-        val slideVertical = (activeDock == DockMode.VIEW && target == DockMode.ANNOTATION) ||
-                            (activeDock == DockMode.ANNOTATION && target == DockMode.VIEW)
-        val slideIn  = if (slideVertical) {
-            if (target == DockMode.ANNOTATION) 1f else -1f   // +1 = from below, -1 = from above
-        } else {
-            if (target == DockMode.SEARCH) 1f else -1f       // +1 = from right, -1 = from left
+        if (!::trioDockSwitcher.isInitialized) return
+        val index = when (target) {
+            DockMode.VIEW       -> 0
+            DockMode.ANNOTATION -> 1
+            DockMode.SEARCH     -> 2
         }
-
-        // Prime the incoming dock off-screen before making visible.
-        // Use a safe fixed offset so the dock starts off-screen regardless of
-        // its measured size at the time of the call (which may be 0 if first show).
-        val offscreenV = (80 * resources.displayMetrics.density)   // 80 dp for vertical switch
-        val offscreenH = resources.displayMetrics.widthPixels.toFloat()  // full width for horizontal
-
-        inDock.apply {
-            visibility = View.VISIBLE
-            alpha = 0f
-            // Annotation enters from below (+Y = down); View returns from above (-Y).
-            // Search enters from the right (+X); returns from the left.
-            if (slideVertical) translationY = offscreenV * slideIn
-            else               translationX = offscreenH * slideIn
-        }
-
-        // Animate both docks together
-        inDock.animate()
-            .apply {
-                if (slideVertical) translationY(0f) else translationX(0f)
-                alpha(1f)
-                duration = DOCK_ANIM_MS
-                interpolator = DOCK_INTERP
-            }
-
-        outDock.animate()
-            .apply {
-                // Out-dock exits in the opposite direction the in-dock came from
-                if (slideVertical) translationY(offscreenV * slideIn * -1)
-                else               translationX(offscreenH * slideIn * -1)
-                alpha(0f)
-                duration = DOCK_ANIM_MS
-                interpolator = DOCK_INTERP
-                withEndAction {
-                    outDock.visibility = View.GONE
-                    outDock.translationX = 0f
-                    outDock.translationY = 0f
-                    outDock.alpha = 1f
-                }
-            }
-
-        activeDock = target
-
-        // Annotation mode side-effects
-        when (target) {
-            DockMode.ANNOTATION -> enterAnnotationMode()
-            DockMode.VIEW       -> {
-                exitAnnotationMode()
-                hideKeyboardIfVisible()
-            }
-            DockMode.SEARCH     -> {
-                binding.searchInput.requestFocus()
-                showKeyboard(binding.searchInput)
-            }
-        }
-
-        // Dismiss appearance panel when switching docks
-        if (appearancePanelVisible) dismissAppearancePanel()
-    }
-
-    private fun dockViewFor(mode: DockMode): View = when (mode) {
-        DockMode.VIEW       -> binding.viewDock
-        DockMode.ANNOTATION -> binding.annotationDock
-        DockMode.SEARCH     -> binding.searchDock
+        trioDockSwitcher.animateToIndex(index)
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -626,6 +562,13 @@ class PdfViewerActivity : AppCompatActivity() {
         binding.colorRed.setOnClickListener    { selectAnnotationColor(Color.parseColor("#FF4757")) }
         binding.colorBlue.setOnClickListener   { selectAnnotationColor(Color.parseColor("#2979FF")) }
         binding.colorYellow.setOnClickListener { selectAnnotationColor(Color.parseColor("#FFD600")) }
+
+        // Full color picker (Problem 6)
+        binding.colorPicker.setOnClickListener {
+            ColorPickerDialog(this, selectedAnnotationColor) { color ->
+                selectAnnotationColor(color)
+            }.show()
+        }
 
         // Stroke size
         binding.strokeUp.setOnClickListener {
@@ -691,17 +634,50 @@ class PdfViewerActivity : AppCompatActivity() {
         binding.annotRedo.alpha = if (binding.annotationLayer.canRedo()) 1.0f else 0.35f
     }
 
+    /**
+     * Enter annotation mode.
+     *
+     * The annotation layer is ALWAYS mounted and visible so strokes persist
+     * across dock switches.  Entering annotation mode enables its touch
+     * handling and disables the PDF view's single-finger gestures.
+     * Pinch zoom still works via AnnotationLayer forwarding.
+     */
     private fun enterAnnotationMode() {
-        binding.annotationLayer.visibility = View.VISIBLE
-        binding.annotationLayer.attachToPdfView(binding.pdfView)
+        ensureAnnotationLayerAttached()
+        binding.annotationLayer.isClickable  = true
+        binding.annotationLayer.isFocusable  = true
         updateUndoRedoState()
-        // Disable PDF view touch so annotation layer gets all events
-        binding.pdfView.isEnabled = false
+        binding.pdfView.allowSingleFingerGestures = false
+        // Don't set pdfView.isEnabled = false — we want pinch zoom to work
     }
 
+    /**
+     * Exit annotation mode.
+     *
+     * The annotation layer stays visible (strokes remain on screen) but stops
+     * intercepting touch events so the PDF view regains scroll/zoom control.
+     * Annotations are NEVER cleared — they persist until explicitly deleted.
+     */
     private fun exitAnnotationMode() {
-        binding.annotationLayer.visibility = View.GONE
-        binding.pdfView.isEnabled = true
+        binding.annotationLayer.isClickable  = false
+        binding.annotationLayer.isFocusable  = false
+        binding.pdfView.allowSingleFingerGestures = true
+    }
+
+    /**
+     * Lazily wires the annotation layer to the PDF view on first use.
+     * Called once from [enterAnnotationMode]; safe to call multiple times.
+     */
+    private var annotationLayerAttached = false
+    private fun ensureAnnotationLayerAttached() {
+        if (!annotationLayerAttached) {
+            binding.annotationLayer.visibility = View.VISIBLE
+            binding.annotationLayer.attachToPdfView(binding.pdfView)
+            // Start non-interactive — enterAnnotationMode() enables touch
+            binding.annotationLayer.isClickable = false
+            binding.annotationLayer.isFocusable = false
+            annotationLayerAttached = true
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -857,6 +833,64 @@ class PdfViewerActivity : AppCompatActivity() {
                     binding.dockZoomPercent.text = "$scalePct%"
                 }
             }
+            // Auto-hide: reset idle timer while any transform changes (includes fling)
+            if (uiHidden) {
+                uiHandler.removeCallbacks(showUIRunnable)
+                uiHandler.postDelayed(showUIRunnable, 2000)
+            }
+        }
+
+        // Problem 4: Scroll direction → auto-hide / show header + dock
+        binding.pdfView.onScrollDelta = { deltaY ->
+            handleScrollAutoHide(deltaY)
+        }
+    }
+
+    // ─── Auto-hide header & dock (Problem 4) ──────────────────────────────
+
+    private fun handleScrollAutoHide(deltaY: Float) {
+        uiHandler.removeCallbacks(showUIRunnable)
+        if (deltaY > SCROLL_HIDE_THRESHOLD) {
+            hideChromeUI()
+        } else if (deltaY < -SCROLL_HIDE_THRESHOLD) {
+            showChromeUI()
+            return          // don't start hide-timer when user scrolls up
+        }
+        if (uiHidden) {
+            uiHandler.postDelayed(showUIRunnable, 2000)
+        }
+    }
+
+    private fun hideChromeUI() {
+        if (uiHidden) return
+        uiHidden = true
+        // Slide top bar up out of view
+        binding.topBar.animate()
+            .translationY(-binding.topBar.height.toFloat())
+            .setDuration(250)
+            .start()
+        // Slide dock below screen
+        binding.dockContainer.animate()
+            .translationY(binding.dockContainer.height.toFloat() + 200f)
+            .setDuration(250)
+            .start()
+    }
+
+    private fun showChromeUI() {
+        if (!uiHidden) return
+        uiHidden = false
+        binding.topBar.animate()
+            .translationY(0f)
+            .setDuration(200)
+            .start()
+        // Restore dock to its DockPositionController state
+        if (::dockPositionController.isInitialized) {
+            dockPositionController.snapTo(dockPositionController.currentState, animate = true)
+        } else {
+            binding.dockContainer.animate()
+                .translationY(0f)
+                .setDuration(200)
+                .start()
         }
     }
 
@@ -866,8 +900,34 @@ class PdfViewerActivity : AppCompatActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val uri = intent?.data
+            ?: intent?.clipData?.getItemAt(0)?.uri
         if (uri == null) { showError(getString(R.string.no_pdf_selected)); return }
+
+        // Persist read permission so the document survives process death
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Exception) { /* not all providers support persistable grants */ }
+
+        // Record in recent files
+        val name = resolveFileName(uri)
+        recentPdfsManager.addRecent(name, uri.toString())
+
         loadPdf(uri)
+    }
+
+    /** Best-effort extraction of the display name from a content URI. */
+    private fun resolveFileName(uri: Uri): String {
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIdx >= 0 && cursor.moveToFirst()) {
+                    return cursor.getString(nameIdx) ?: "Untitled.pdf"
+                }
+            }
+        } catch (_: Exception) { }
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "Untitled.pdf"
     }
 
     private fun loadPdf(uri: Uri) {

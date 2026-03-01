@@ -16,26 +16,27 @@
         android:theme="@style/Theme.Kiosk"
         tools:targetApi="34">
         
-        <!-- Main Activity - Home Screen -->
+        <!--
+            LauncherActivity – Single entry point.
+            Routes to PdfViewerActivity (if intent carries PDF) or
+            MainActivity (home / file picker) otherwise.
+            Holds the LAUNCHER category AND all PDF intent-filters so
+            the system resolver shows "Kiosk" as a default PDF handler.
+        -->
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".ui.LauncherActivity"
             android:exported="true"
-            android:theme="@style/Theme.Kiosk">
+            android:theme="@style/Theme.Kiosk"
+            android:noHistory="true"
+            android:excludeFromRecents="true">
+
+            <!-- Normal launcher icon tap -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
 
-        <!-- PDF Viewer Activity - Handles PDF files -->
-        <activity
-            android:name=".ui.PdfViewerActivity"
-            android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.Kiosk.PdfViewer">
-            
-            <!-- Open PDF files from file managers -->
+            <!-- Open PDF files from file managers (content:// and file://) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -56,13 +57,6 @@
                 <data android:pathPattern=".*\\.PDF" />
             </intent-filter>
 
-            <!-- SAF document picker support -->
-            <intent-filter>
-                <action android:name="android.intent.action.OPEN_DOCUMENT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/pdf" />
-            </intent-filter>
-
             <!-- Generic PDF MIME type handler -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -78,8 +72,29 @@
                 <data android:host="*" />
                 <data android:mimeType="application/pdf" />
             </intent-filter>
-            
+
+            <!-- Receive shared PDFs (ACTION_SEND) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
         </activity>
+
+        <!-- Main Activity - Home Screen / File Picker (internal, not exported) -->
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Kiosk" />
+
+        <!-- PDF Viewer Activity - Handles PDF display (internal, launched by LauncherActivity) -->
+        <activity
+            android:name=".ui.PdfViewerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.Kiosk.PdfViewer" />
 
         <!-- File Provider for sharing PDFs -->
         <provider

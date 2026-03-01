@@ -70,4 +70,23 @@
     <!-- Gestures (snackbar hints) -->
     <string name="hint_swipe_up">Swipe up for annotation tools</string>
     <string name="hint_swipe_left">Swipe left to search</string>
+
+    <!-- PDF Info dialog -->
+    <string name="pdf_info_title">PDF Information</string>
+    <string name="pdf_name_label">Name</string>
+    <string name="pdf_size_label">Size</string>
+    <string name="pdf_location_label">Location</string>
+    <string name="pdf_pages_label">Pages</string>
+
+    <!-- About section (home page) -->
+    <string name="about_heading">About</string>
+    <string name="about_text">Kiosk is an open source PDF reader built for performance, fluid interaction, and premium reading experience.\n\nCreated by Sarthak (sarthakg.tech) and KripsLabs.</string>
+
+    <!-- Recent files -->
+    <string name="file_moved_or_deleted">This file may have been moved or deleted</string>
+
+    <!-- Annotation save -->
+    <string name="save_success">Annotations saved to PDF</string>
+    <string name="save_failed">Failed to save annotations</string>
+    <string name="no_annotations">No annotations to save</string>
 </resources>

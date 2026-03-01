@@ -525,6 +525,18 @@
                     android:tint="@color/annot_yellow"
                     app:tint="@color/annot_yellow" />
 
+                <!-- Full colour picker -->
+                <ImageButton
+                    android:id="@+id/colorPicker"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginHorizontal="3dp"
+                    android:background="@null"
+                    android:contentDescription="@string/pick_color"
+                    android:src="@drawable/ic_color_circle"
+                    android:tint="@color/dock_icon_dark"
+                    app:tint="@color/dock_icon_dark" />
+
                 <!-- Divider -->
                 <View
                     android:layout_width="1dp"

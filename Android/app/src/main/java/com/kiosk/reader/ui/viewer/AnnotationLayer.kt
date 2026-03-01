@@ -125,9 +125,39 @@ class AnnotationLayer @JvmOverloads constructor(
     // Touch handling
     // ──────────────────────────────────────────────────────────────────────
 
+    /** True while we are forwarding multi-touch events to the PdfView for zoom. */
+    private var isForwardingZoom = false
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val pdf = pdfView ?: return false
-        if (visibility != VISIBLE) return false
+        // Layer is always visible so strokes persist, but only consume
+        // touch events when annotation mode is active (isClickable == true).
+        if (!isClickable) return false
+
+        // ── Multi-touch → forward to PDF view for pinch-to-zoom ──
+        if (event.pointerCount > 1 || isForwardingZoom) {
+            if (!isForwardingZoom) {
+                isForwardingZoom = true
+                // Abort any in-progress drawing
+                activePoints.clear()
+                activePageIndex = -1
+                invalidate()
+                // Synthetic ACTION_DOWN so the ScaleGestureDetector initialises
+                val synDown = MotionEvent.obtain(
+                    event.downTime, event.eventTime,
+                    MotionEvent.ACTION_DOWN, event.getX(0), event.getY(0), 0
+                )
+                pdf.handleExternalTouch(synDown)
+                synDown.recycle()
+            }
+            pdf.handleExternalTouch(event)
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                isForwardingZoom = false
+            }
+            return true
+        }
 
         val screenX = event.x
         val screenY = event.y
@@ -184,27 +214,32 @@ class AnnotationLayer @JvmOverloads constructor(
         screenX: Float,
         screenY: Float
     ): Pair<Int, PagePoint>? {
-        val scale       = pdf.getScale()
+        val globalScale = pdf.getScale()
+        val fitScale    = pdf.getFitScale()
+        val pageFitScales = pdf.getPageFitScales()
         val scrollY     = pdf.getPdfScrollY()
         val gap         = pdf.getPageGapPx().toFloat()
         val viewWidth   = pdf.width.toFloat()
         val dims        = pdf.getPageDimensionsList()
 
         if (dims.isEmpty()) return null
+        val zoomRatio = if (fitScale > 0f) globalScale / fitScale else 1f
 
         val contentY = screenY + scrollY
         var pageContentTop = 0f
 
         for (i in dims.indices) {
             val (origW, origH) = dims[i]
-            val pageH     = origH * scale
-            val pageW     = origW * scale
+            val pageFit = pageFitScales.getOrElse(i) { fitScale }
+            val effectiveScale = pageFit * zoomRatio
+            val pageH = origH * effectiveScale
+            val pageW = origW * effectiveScale
             val pageContentBottom = pageContentTop + pageH
 
             if (contentY in pageContentTop..pageContentBottom) {
-                val left      = (viewWidth - pageW) / 2f
-                val pageLocalX = (screenX - left) / scale
-                val pageLocalY = (contentY - pageContentTop) / scale
+                val left       = (viewWidth - pageW) / 2f
+                val pageLocalX = (screenX - left) / effectiveScale
+                val pageLocalY = (contentY - pageContentTop) / effectiveScale
                 return Pair(i, PagePoint(pageLocalX, pageLocalY))
             }
 
@@ -223,24 +258,30 @@ class AnnotationLayer @JvmOverloads constructor(
         pageX: Float,
         pageY: Float
     ): Pair<Float, Float>? {
-        val scale     = pdf.getScale()
+        val globalScale = pdf.getScale()
+        val fitScale    = pdf.getFitScale()
+        val pageFitScales = pdf.getPageFitScales()
         val scrollY   = pdf.getPdfScrollY()
         val gap       = pdf.getPageGapPx().toFloat()
         val viewWidth = pdf.width.toFloat()
         val dims      = pdf.getPageDimensionsList()
 
         if (pageIndex >= dims.size) return null
+        val zoomRatio = if (fitScale > 0f) globalScale / fitScale else 1f
 
         var pageContentTop = 0f
         for (i in 0 until pageIndex) {
-            pageContentTop += dims[i].second * scale + gap
+            val pageFit = pageFitScales.getOrElse(i) { fitScale }
+            pageContentTop += dims[i].second * pageFit * zoomRatio + gap
         }
 
+        val pageFit = pageFitScales.getOrElse(pageIndex) { fitScale }
+        val effectiveScale = pageFit * zoomRatio
         val origW      = dims[pageIndex].first
-        val pageW      = origW * scale
+        val pageW      = origW * effectiveScale
         val left       = (viewWidth - pageW) / 2f
-        val screenX    = pageX * scale + left
-        val screenY    = pageContentTop + pageY * scale - scrollY
+        val screenX    = pageX * effectiveScale + left
+        val screenY    = pageContentTop + pageY * effectiveScale - scrollY
         return Pair(screenX, screenY)
     }
 

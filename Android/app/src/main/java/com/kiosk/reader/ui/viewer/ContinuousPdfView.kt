@@ -11,8 +11,10 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.OverScroller
 import androidx.core.content.ContextCompat
 import androidx.core.view.GestureDetectorCompat
+import androidx.core.view.ViewCompat
 import com.kiosk.reader.R
 import com.kiosk.reader.pdf.PageCache
 import com.kiosk.reader.pdf.PdfDocument
@@ -58,9 +60,16 @@ class ContinuousPdfView @JvmOverloads constructor(
     private var fitScale: Float = 1.0f
     private var baseRenderScale: Float = 1.0f
 
+    // Per-page fit-width scales (each page fills full view width independently)
+    private val pageFitScales = mutableListOf<Float>()
+
     // Content dimensions
     private var totalContentHeight: Float = 0f
     private var maxPageWidth: Int = 0
+
+    // Native fling scroller for frame-perfect momentum scrolling
+    private val flingScroller = OverScroller(context)
+    private var flingRunnable: Runnable? = null
 
     // Rendering
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -96,6 +105,12 @@ class ContinuousPdfView @JvmOverloads constructor(
     var onError: ((String) -> Unit)? = null
     /** Fired whenever scrollY or scale changes so overlays (e.g. AnnotationLayer) can redraw. */
     var onTransformChanged: (() -> Unit)? = null
+    /** Fired with the raw scroll distanceY during finger-driven scroll (not fling). */
+    var onScrollDelta: ((Float) -> Unit)? = null
+
+    /** When false, single-finger scroll/fling is suppressed (annotation mode).
+     *  Pinch zoom still works via [handleExternalTouch]. */
+    var allowSingleFingerGestures = true
 
     // Current visible page
     private var currentVisiblePage: Int = 0
@@ -166,10 +181,11 @@ class ContinuousPdfView @JvmOverloads constructor(
             distanceX: Float,
             distanceY: Float
         ): Boolean {
-            if (!isScaling) {
+            if (!isScaling && allowSingleFingerGestures) {
                 scrollY = (scrollY + distanceY).coerceIn(0f, maxScrollY())
                 invalidate()
                 updateCurrentPage()
+                onScrollDelta?.invoke(distanceY)
             }
             return true
         }
@@ -180,23 +196,14 @@ class ContinuousPdfView @JvmOverloads constructor(
             velocityX: Float,
             velocityY: Float
         ): Boolean {
-            if (!isScaling) {
-                viewScope.launch {
-                    var velocity = -velocityY * 0.5f
-                    while (kotlin.math.abs(velocity) > 50) {
-                        scrollY = (scrollY + velocity * 0.016f).coerceIn(0f, maxScrollY())
-                        velocity *= 0.95f
-                        invalidate()
-                        updateCurrentPage()
-                        delay(16)
-                    }
-                    ensureVisiblePagesLoaded()
-                }
+            if (!isScaling && allowSingleFingerGestures) {
+                startFling(-velocityY.toInt())
             }
             return true
         }
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
+            if (!allowSingleFingerGestures) return false
             val targetScale = if (scale < fitScale * 1.5f) {
                 min(fitScale * 2.5f, maxScale)
             } else {
@@ -211,6 +218,36 @@ class ContinuousPdfView @JvmOverloads constructor(
             return true
         }
     }
+
+    // ─── Fling via OverScroller ─────────────────────────────────────────
+
+    private fun startFling(velocityY: Int) {
+        flingScroller.forceFinished(true)
+        flingScroller.fling(
+            0, scrollY.toInt(),
+            0, velocityY,
+            0, 0,
+            0, maxScrollY().toInt(),
+            0, (48 * resources.displayMetrics.density).toInt() // edge overscroll glow
+        )
+        tickFling()
+    }
+
+    private fun tickFling() {
+        flingRunnable = Runnable {
+            if (flingScroller.computeScrollOffset()) {
+                scrollY = flingScroller.currY.toFloat().coerceIn(0f, maxScrollY())
+                invalidate()
+                updateCurrentPage()
+                tickFling()
+            } else {
+                ensureVisiblePagesLoaded()
+            }
+        }
+        ViewCompat.postOnAnimation(this, flingRunnable!!)
+    }
+
+    // ─── Quality upgrade after gesture ends ────────────────────────────────
 
     private fun scheduleQualityUpgrade() {
         qualityUpgradeJob?.cancel()
@@ -260,9 +297,15 @@ class ContinuousPdfView @JvmOverloads constructor(
     private fun renderPageAsync(document: PdfDocument, pageIndex: Int) {
         renderJobs[pageIndex] = viewScope.launch {
             try {
-                val bitmap = document.renderPage(pageIndex, baseRenderScale)
+                // Per-page render scale: ensures each page fills screen width
+                val pageRenderScale = if (pageIndex < pageFitScales.size)
+                    pageFitScales[pageIndex] * 2.0f   // 2× headroom for zoom quality
+                else
+                    baseRenderScale
+
+                val bitmap = document.renderPage(pageIndex, pageRenderScale)
                 if (bitmap != null) {
-                    pageCache.put(pageIndex, baseRenderScale, bitmap)
+                    pageCache.put(pageIndex, pageRenderScale, bitmap)
                     withContext(Dispatchers.Main) {
                         invalidate()
                     }
@@ -276,23 +319,25 @@ class ContinuousPdfView @JvmOverloads constructor(
     }
 
     private fun getVisiblePageIndices(): List<Int> {
+        val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
         val visibleTop = scrollY
         val visibleBottom = scrollY + height
         val visiblePages = mutableListOf<Int>()
-        
+
         var pageTop = 0f
         for (i in pageDimensions.indices) {
-            val pageHeight = pageDimensions[i].second * scale
+            val pageFit = pageFitScales.getOrElse(i) { fitScale }
+            val pageHeight = pageDimensions[i].second * pageFit * zoomRatio
             val pageBottom = pageTop + pageHeight
-            
+
             if (pageBottom >= visibleTop && pageTop <= visibleBottom) {
                 visiblePages.add(i)
             }
-            
+
             pageTop = pageBottom + pageGap
             if (pageTop > visibleBottom) break
         }
-        
+
         return visiblePages
     }
 
@@ -352,11 +397,20 @@ class ContinuousPdfView @JvmOverloads constructor(
                     }
                 }
 
+                // Compute per-page fit-width scale so every page fills the screen
+                pageFitScales.clear()
+                val viewW = width.toFloat()
+                for (dims in pageDimensions) {
+                    val pageW = dims.first.toFloat().coerceAtLeast(1f)
+                    pageFitScales.add(viewW / pageW)
+                }
+
                 if (width > 0 && maxPageWidth > 0) {
-                    fitScale = (width - 32.dpToPx()).toFloat() / maxPageWidth
+                    // Global fitScale based on widest page (used for zoom limits)
+                    fitScale = viewW / maxPageWidth.toFloat()
                     scale = fitScale
-                    minScale = fitScale * 0.5f
-                    maxScale = fitScale * 4.0f
+                    minScale = fitScale              // 1× = can't zoom out below fit-width
+                    maxScale = fitScale * 5.0f       // 5× zoom
                     baseRenderScale = fitScale * 2.0f
                 }
 
@@ -398,6 +452,12 @@ class ContinuousPdfView @JvmOverloads constructor(
      */
     fun getPageDimensionsList(): List<Pair<Int, Int>> = pageDimensions.toList()
 
+    /** Per-page fit-width scale factors. */
+    fun getPageFitScales(): List<Float> = pageFitScales.toList()
+
+    /** Global fit scale (widest page fills view width). */
+    fun getFitScale(): Float = fitScale
+
     fun goToPage(pageIndex: Int) {
         if (pageIndex < 0 || pageIndex >= pageCount) return
         scrollY = getPageTop(pageIndex)
@@ -431,8 +491,10 @@ class ContinuousPdfView @JvmOverloads constructor(
 
     private fun updateContentDimensions() {
         totalContentHeight = 0f
-        for ((_, h) in pageDimensions) {
-            totalContentHeight += h * scale + pageGap
+        val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
+        for (i in pageDimensions.indices) {
+            val pageFit = pageFitScales.getOrElse(i) { fitScale }
+            totalContentHeight += pageDimensions[i].second * pageFit * zoomRatio + pageGap
         }
         if (pageDimensions.isNotEmpty()) {
             totalContentHeight -= pageGap
@@ -442,10 +504,12 @@ class ContinuousPdfView @JvmOverloads constructor(
     private fun maxScrollY(): Float = max(0f, totalContentHeight - height)
 
     private fun getPageTop(pageIndex: Int): Float {
+        val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
         var top = 0f
         for (i in 0 until pageIndex) {
             if (i < pageDimensions.size) {
-                top += pageDimensions[i].second * scale + pageGap
+                val pageFit = pageFitScales.getOrElse(i) { fitScale }
+                top += pageDimensions[i].second * pageFit * zoomRatio + pageGap
             }
         }
         return top.coerceIn(0f, maxScrollY())
@@ -453,12 +517,14 @@ class ContinuousPdfView @JvmOverloads constructor(
 
     private fun updateCurrentPage() {
         if (pageDimensions.isEmpty()) return
-        
+
+        val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
         var accumulatedHeight = 0f
         val viewCenter = scrollY + height / 3f
-        
+
         for (i in pageDimensions.indices) {
-            val pageHeight = pageDimensions[i].second * scale + pageGap
+            val pageFit = pageFitScales.getOrElse(i) { fitScale }
+            val pageHeight = pageDimensions[i].second * pageFit * zoomRatio + pageGap
             if (viewCenter < accumulatedHeight + pageHeight) {
                 if (i != currentVisiblePage) {
                     currentVisiblePage = i
@@ -469,7 +535,7 @@ class ContinuousPdfView @JvmOverloads constructor(
             }
             accumulatedHeight += pageHeight
         }
-        
+
         if (currentVisiblePage != pageCount - 1) {
             currentVisiblePage = pageCount - 1
             onPageChanged?.invoke(currentVisiblePage, pageCount)
@@ -481,14 +547,21 @@ class ContinuousPdfView @JvmOverloads constructor(
         super.onSizeChanged(w, h, oldw, oldh)
         
         if (maxPageWidth > 0 && w > 0) {
-            val newFitScale = (w - 32.dpToPx()).toFloat() / maxPageWidth
-            val relativeZoom = scale / fitScale
+            val newFitScale = w.toFloat() / maxPageWidth.toFloat()
+            val relativeZoom = if (fitScale > 0f) scale / fitScale else 1f
             fitScale = newFitScale
             scale = (newFitScale * relativeZoom).coerceIn(minScale, maxScale)
             
-            minScale = fitScale * 0.5f
-            maxScale = fitScale * 4.0f
+            minScale = fitScale              // 1×
+            maxScale = fitScale * 5.0f       // 5×
             baseRenderScale = fitScale * 2.0f
+
+            // Recompute per-page scales for new width
+            pageFitScales.clear()
+            for (dims in pageDimensions) {
+                val pageW = dims.first.toFloat().coerceAtLeast(1f)
+                pageFitScales.add(w.toFloat() / pageW)
+            }
             
             updateContentDimensions()
             scrollY = scrollY.coerceIn(0f, maxScrollY())
@@ -503,16 +576,26 @@ class ContinuousPdfView @JvmOverloads constructor(
 
         val activePaint = if (nightModeEnabled) nightModePaint else paint
         var pageTop = -scrollY
-        
+
+        // At fitScale (default zoom = 1×) every page fills the view width.
+        // The global `scale` can differ from fitScale when the user zooms.
+        // zoomRatio > 1 means zoomed in beyond fit-width; < 1 means zoomed out.
+        val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
+
         for (i in pageDimensions.indices) {
             val (origWidth, origHeight) = pageDimensions[i]
-            val displayWidth = origWidth * scale
-            val displayHeight = origHeight * scale
+
+            // Per-page scale: fills width at zoomRatio = 1
+            val pageFit = pageFitScales.getOrElse(i) { fitScale }
+            val effectiveScale = pageFit * zoomRatio
+
+            val displayWidth = origWidth * effectiveScale
+            val displayHeight = origHeight * effectiveScale
             val pageBottom = pageTop + displayHeight
-            
+
             if (pageBottom >= 0 && pageTop <= height) {
                 val left = (width - displayWidth) / 2f
-                
+
                 if (!nightModeEnabled) {
                     paint.color = 0xFFFFFFFF.toInt()
                     canvas.drawRect(left, pageTop, left + displayWidth, pageBottom, paint)
@@ -522,23 +605,46 @@ class ContinuousPdfView @JvmOverloads constructor(
                 if (entry != null && !entry.bitmap.isRecycled) {
                     val bw = entry.bitmap.width.toFloat()
                     val bh = entry.bitmap.height.toFloat()
-                    
+
                     bitmapMatrix.reset()
                     bitmapMatrix.postScale(displayWidth / bw, displayHeight / bh)
                     bitmapMatrix.postTranslate(left, pageTop)
-                    
+
                     canvas.drawBitmap(entry.bitmap, bitmapMatrix, activePaint)
                 } else {
                     paint.color = 0xFFF0F0F0.toInt()
                     canvas.drawRect(left, pageTop, left + displayWidth, pageBottom, paint)
                 }
             }
-            
+
             pageTop = pageBottom + pageGap
         }
     }
 
+    /**
+     * Forward touch events from overlays (e.g. AnnotationLayer) for pinch-to-zoom.
+     * Only feeds the ScaleGestureDetector — single-finger gestures are NOT processed.
+     */
+    fun handleExternalTouch(event: MotionEvent) {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            flingScroller.forceFinished(true)
+            flingRunnable?.let { removeCallbacks(it) }
+            flingRunnable = null
+        }
+        scaleGestureDetector.onTouchEvent(event)
+        if (event.pointerCount > 1 || scaleGestureDetector.isInProgress) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // Cancel any running fling on new touch down
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            flingScroller.forceFinished(true)
+            flingRunnable?.let { removeCallbacks(it) }
+            flingRunnable = null
+        }
+
         scaleGestureDetector.onTouchEvent(event)
         
         if (!scaleGestureDetector.isInProgress) {
@@ -565,12 +671,16 @@ class ContinuousPdfView @JvmOverloads constructor(
     }
 
     fun release() {
+        flingScroller.forceFinished(true)
+        flingRunnable?.let { removeCallbacks(it) }
+        flingRunnable = null
         initJob?.cancel()
         qualityUpgradeJob?.cancel()
         renderJobs.values.forEach { it.cancel() }
         renderJobs.clear()
         pageCache.clear()
         pageDimensions.clear()
+        pageFitScales.clear()
         pdfDocument?.close()
         pdfDocument = null
     }

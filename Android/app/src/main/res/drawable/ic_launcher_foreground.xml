@@ -3,14 +3,63 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Background circle area for adaptive icon safe zone -->
-    <group android:translateX="22" android:translateY="22">
-        <!-- PDF document icon -->
+
+    <!-- Content centered in 108x108 adaptive-icon safe zone (offset 34,34) -->
+    <group
+        android:translateX="34"
+        android:translateY="34">
+
+        <!-- Background circle -->
+        <path
+            android:fillColor="#dc2626"
+            android:fillAlpha="0.15"
+            android:pathData="M2,20a18,18,0,1,0,36,0a18,18,0,1,0,-36,0z"/>
+
+        <!-- PDF document body -->
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M32,4H12C9.79,4 8,5.79 8,8v48c0,2.21 1.79,4 4,4h40c2.21,0 4,-1.79 4,-4V20L32,4zM12,56V8h18v14h14v34H12z"/>
+            android:strokeColor="#1A1A1A"
+            android:strokeWidth="1.5"
+            android:pathData="M12,8C12,6.895 12.895,6 14,6L22,6L28,12L28,32C28,33.105 27.105,34 26,34L14,34C12.895,34 12,33.105 12,32L12,8Z"/>
+
+        <!-- Folded corner -->
         <path
-            android:fillColor="#E53935"
-            android:pathData="M18,38h28v4H18zM18,46h20v4H18zM18,30h28v4H18z"/>
+            android:fillColor="#F5F5F5"
+            android:strokeColor="#1A1A1A"
+            android:strokeWidth="1.5"
+            android:strokeLineJoin="round"
+            android:pathData="M22,6L22,11C22,11.552 22.448,12 23,12L28,12"/>
+
+        <!-- Red accent bar 1 -->
+        <path
+            android:fillColor="#dc2626"
+            android:pathData="M16,16L24,16A1,1,0,0,1,25,17L25,17A1,1,0,0,1,24,18L16,18A1,1,0,0,1,15,17L15,17A1,1,0,0,1,16,16Z"/>
+
+        <!-- Red accent bar 2 -->
+        <path
+            android:fillColor="#dc2626"
+            android:fillAlpha="0.7"
+            android:pathData="M16,20L22,20A1,1,0,0,1,23,21L23,21A1,1,0,0,1,22,22L16,22A1,1,0,0,1,15,21L15,21A1,1,0,0,1,16,20Z"/>
+
+        <!-- Red accent bar 3 -->
+        <path
+            android:fillColor="#dc2626"
+            android:fillAlpha="0.5"
+            android:pathData="M16,24L24,24A1,1,0,0,1,25,25L25,25A1,1,0,0,1,24,26L16,26A1,1,0,0,1,15,25L15,25A1,1,0,0,1,16,24Z"/>
+
+        <!-- Red accent bar 4 -->
+        <path
+            android:fillColor="#dc2626"
+            android:fillAlpha="0.3"
+            android:pathData="M16,28L20,28A1,1,0,0,1,21,29L21,29A1,1,0,0,1,20,30L16,30A1,1,0,0,1,15,29L15,29A1,1,0,0,1,16,28Z"/>
+
+        <!-- K letter overlay -->
+        <path
+            android:strokeColor="#1A1A1A"
+            android:strokeWidth="1.5"
+            android:strokeAlpha="0.3"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M18,18L18,26M18,22L21,18M18,22L21,26"/>
     </group>
 </vector>
