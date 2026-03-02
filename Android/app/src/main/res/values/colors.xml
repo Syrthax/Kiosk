@@ -40,19 +40,24 @@
     <color name="accent">#E53935</color>
     <color name="ripple_color">#33E53935</color>
 
-    <!-- ================================================================
-         Trio Dock –  always dark-glass regardless of mode
-         ================================================================ -->
+    <!-- Trio Dock - theme-aware surface with translucency -->
+    <color name="dock_surface">#CCF2F2F7</color>
+    <color name="dock_border">#18000000</color>
+    <color name="dock_icon">#FF1C1C1E</color>
+    <color name="dock_text">#991C1C1E</color>
     <color name="dock_bg_dark">#D01C1C1E</color>
     <color name="dock_bg_light">#D0F2F2F7</color>
     <color name="dock_icon_dark">#FFFFFFFF</color>
     <color name="dock_icon_light">#FF1C1C1E</color>
-    <color name="dock_divider">#28FFFFFF</color>
+    <color name="dock_divider">#18000000</color>
 
-    <!-- Top-bar -->
-    <color name="top_bar_bg">#F0111111</color>
-    <color name="top_bar_text">#FFFFFFFF</color>
-    <color name="top_bar_icon">#CCFFFFFF</color>
+    <!-- Top-bar (light mode: frosted white) -->
+    <color name="top_bar_bg">#F0F8F8F8</color>
+    <color name="top_bar_text">#FF1C1C1E</color>
+    <color name="top_bar_icon">#CC1C1C1E</color>
+
+    <!-- Dock handle indicator -->
+    <color name="dock_handle">#661C1C1E</color>
 
     <!-- Page-indicator pill -->
     <color name="pill_bg">#80000000</color>

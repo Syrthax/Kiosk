@@ -102,6 +102,35 @@ class PdfDocument private constructor(
         }
     }
 
+    /**
+     * Batch-loads dimensions for ALL pages in a single mutex lock.
+     * Much faster than calling getPageDimensions() N times, because
+     * we acquire the mutex only once and avoid repeated lock overhead.
+     */
+    suspend fun getAllPageDimensions(): List<Pair<Int, Int>> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<Pair<Int, Int>>()
+        renderMutex.withLock {
+            try {
+                currentPage?.close()
+                currentPage = null
+
+                for (i in 0 until pageCount) {
+                    try {
+                        val page = renderer.openPage(i)
+                        result.add(Pair(page.width, page.height))
+                        page.close()
+                    } catch (e: Exception) {
+                        // Fallback to standard US Letter dimensions
+                        result.add(Pair(612, 792))
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        result
+    }
+
     override fun close() {
         try {
             currentPage?.close()

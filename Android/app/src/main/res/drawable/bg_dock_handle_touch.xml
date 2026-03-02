@@ -10,8 +10,8 @@
         android:gravity="center_vertical"
         android:height="5dp">
         <shape>
-            <!-- ~70% opaque white, matches original handle colour -->
-            <solid android:color="#B3FFFFFF" />
+            <!-- Theme-aware: dark in light mode, white in dark mode -->
+            <solid android:color="@color/dock_handle" />
             <!-- Full corner radius = capsule shape -->
             <corners android:radius="3dp" />
         </shape>

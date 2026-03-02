@@ -40,7 +40,13 @@ class PageCache(maxSizeMb: Int = 128) {
                 oldValue: CacheEntry,
                 newValue: CacheEntry?
             ) {
-                if (evicted && newValue == null && !oldValue.bitmap.isRecycled) {
+                // Recycle old bitmap on both eviction AND replacement,
+                // as long as the bitmap object is different from the new one.
+                // LruCache guarantees the old entry is already removed from the
+                // map when this callback fires, so onDraw will never read it.
+                if (!oldValue.bitmap.isRecycled &&
+                    (newValue == null || oldValue.bitmap !== newValue.bitmap)
+                ) {
                     oldValue.bitmap.recycle()
                 }
             }
@@ -49,12 +55,11 @@ class PageCache(maxSizeMb: Int = 128) {
 
     /**
      * Store a rendered page bitmap.
+     * Old bitmap recycling is handled by LruCache.entryRemoved() —
+     * never recycle manually here to avoid a window where onDraw
+     * reads a recycled bitmap (the blank-page-during-zoom bug).
      */
     fun put(pageIndex: Int, renderedScale: Float, bitmap: Bitmap) {
-        val existing = cache.get(pageIndex)
-        if (existing != null && !existing.bitmap.isRecycled) {
-            existing.bitmap.recycle()
-        }
         cache.put(pageIndex, CacheEntry(bitmap, renderedScale))
     }
 

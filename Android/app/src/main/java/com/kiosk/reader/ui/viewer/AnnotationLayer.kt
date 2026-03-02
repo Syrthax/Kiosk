@@ -80,9 +80,16 @@ class AnnotationLayer @JvmOverloads constructor(
     // ──────────────────────────────────────────────────────────────────────
 
     private var pdfView: ContinuousPdfView? = null
+    /** Content top padding matching ContinuousPdfView for coordinate alignment. */
+    private var contentTopPadding: Float = 0f
 
     fun attachToPdfView(view: ContinuousPdfView) {
         pdfView = view
+    }
+
+    /** Set content top padding to match ContinuousPdfView header offset. */
+    fun setContentTopPadding(paddingPx: Float) {
+        contentTopPadding = paddingPx
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -175,6 +182,24 @@ class AnnotationLayer @JvmOverloads constructor(
 
             MotionEvent.ACTION_MOVE -> {
                 val mapped = screenToPageCoords(pdf, screenX, screenY) ?: return true
+                // If finger moved to a different page, commit current stroke and
+                // start a fresh one on the new page (prevents cross-page lines).
+                if (mapped.first != activePageIndex && activePageIndex >= 0 && activePoints.isNotEmpty()) {
+                    val stroke = AnnotationStroke(
+                        pageIndex   = activePageIndex,
+                        points      = activePoints.toList(),
+                        color       = currentColor,
+                        strokeWidth = currentStrokeWidth,
+                        isHighlight = (currentTool == Tool.HIGHLIGHT),
+                        isErase     = (currentTool == Tool.ERASER)
+                    )
+                    committedStrokes.add(stroke)
+                    activePoints.clear()
+                    activePageIndex = mapped.first
+                    activePoints.add(mapped.second)
+                    invalidate()
+                    return true
+                }
                 // Only add if moved meaningfully (avoids tiny duplicate points)
                 val last = activePoints.lastOrNull()
                 if (last == null || hypot(mapped.second.x - last.x, mapped.second.y - last.y) > 0.5f) {
@@ -218,6 +243,7 @@ class AnnotationLayer @JvmOverloads constructor(
         val fitScale    = pdf.getFitScale()
         val pageFitScales = pdf.getPageFitScales()
         val scrollY     = pdf.getPdfScrollY()
+        val scrollX     = pdf.getPdfScrollX()
         val gap         = pdf.getPageGapPx().toFloat()
         val viewWidth   = pdf.width.toFloat()
         val dims        = pdf.getPageDimensionsList()
@@ -225,7 +251,8 @@ class AnnotationLayer @JvmOverloads constructor(
         if (dims.isEmpty()) return null
         val zoomRatio = if (fitScale > 0f) globalScale / fitScale else 1f
 
-        val contentY = screenY + scrollY
+        // Account for header padding: screen position relative to content start
+        val contentY = screenY - contentTopPadding + scrollY
         var pageContentTop = 0f
 
         for (i in dims.indices) {
@@ -237,7 +264,7 @@ class AnnotationLayer @JvmOverloads constructor(
             val pageContentBottom = pageContentTop + pageH
 
             if (contentY in pageContentTop..pageContentBottom) {
-                val left       = (viewWidth - pageW) / 2f
+                val left       = (viewWidth - pageW) / 2f - scrollX
                 val pageLocalX = (screenX - left) / effectiveScale
                 val pageLocalY = (contentY - pageContentTop) / effectiveScale
                 return Pair(i, PagePoint(pageLocalX, pageLocalY))
@@ -262,6 +289,7 @@ class AnnotationLayer @JvmOverloads constructor(
         val fitScale    = pdf.getFitScale()
         val pageFitScales = pdf.getPageFitScales()
         val scrollY   = pdf.getPdfScrollY()
+        val scrollX   = pdf.getPdfScrollX()
         val gap       = pdf.getPageGapPx().toFloat()
         val viewWidth = pdf.width.toFloat()
         val dims      = pdf.getPageDimensionsList()
@@ -279,9 +307,10 @@ class AnnotationLayer @JvmOverloads constructor(
         val effectiveScale = pageFit * zoomRatio
         val origW      = dims[pageIndex].first
         val pageW      = origW * effectiveScale
-        val left       = (viewWidth - pageW) / 2f
+        val left       = (viewWidth - pageW) / 2f - scrollX
         val screenX    = pageX * effectiveScale + left
-        val screenY    = pageContentTop + pageY * effectiveScale - scrollY
+        // Convert back to screen coordinates accounting for header padding
+        val screenY    = contentTopPadding + pageContentTop + pageY * effectiveScale - scrollY
         return Pair(screenX, screenY)
     }
 

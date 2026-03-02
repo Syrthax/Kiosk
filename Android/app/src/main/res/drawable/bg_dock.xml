@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Glassmorphism dock background – dark variant (dark / night mode).
+  Glassmorphism dock background – theme-aware.
+  Light mode: translucent light surface. Dark mode: translucent dark surface.
   True backdrop blur requires API 31+ RenderEffect; this simulates the
   frosted-glass aesthetic across all API levels with a translucent fill,
-  a thin white border-stroke, and a bottom shadow (set via elevation on
-  the host view).
+  a thin border-stroke, and a bottom shadow (set via elevation on the
+  host view).
 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#D01C1C1E" />
+    <solid android:color="@color/dock_surface" />
     <corners android:radius="28dp" />
     <stroke
         android:width="0.75dp"
-        android:color="#28FFFFFF" />
+        android:color="@color/dock_border" />
 </shape>

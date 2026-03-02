@@ -152,6 +152,99 @@
     </LinearLayout>
 
     <!-- ══════════════════════════════════════════════
+         APPEARANCE PANEL (floats above dock, initially GONE)
+         ══════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/appearancePanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_appearance_panel"
+        android:elevation="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/dockContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- Light mode -->
+        <LinearLayout
+            android:id="@+id/modeLightBtn"
+            android:layout_width="72dp"
+            android:layout_height="48dp"
+            android:background="@drawable/ripple_dock_button"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView
+                android:id="@+id/modeLightIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@string/mode_light"
+                android:src="@drawable/ic_light_mode"
+                android:tint="@color/dock_icon"
+                app:tint="@color/dock_icon" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/mode_light"
+                android:textColor="@color/dock_text"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- Dark mode -->
+        <LinearLayout
+            android:id="@+id/modeDarkBtn"
+            android:layout_width="72dp"
+            android:layout_height="48dp"
+            android:background="@drawable/ripple_dock_button"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView
+                android:id="@+id/modeDarkIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@string/mode_dark"
+                android:src="@drawable/ic_dark_mode"
+                android:tint="@color/dock_icon"
+                app:tint="@color/dock_icon" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/mode_dark"
+                android:textColor="@color/dock_text"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- Night mode -->
+        <LinearLayout
+            android:id="@+id/modeNightBtn"
+            android:layout_width="72dp"
+            android:layout_height="48dp"
+            android:background="@drawable/ripple_dock_button"
+            android:gravity="center"
+            android:orientation="vertical">
+            <ImageView
+                android:id="@+id/modeNightIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@string/mode_night"
+                android:src="@drawable/ic_night_mode"
+                android:tint="@color/dock_icon"
+                app:tint="@color/dock_icon" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/mode_night"
+                android:textColor="@color/dock_text"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ══════════════════════════════════════════════
          DOCK CONTAINER  (floating, bottom-center)
          The three docks live here at the same position;
          they translate in/out on gesture.
@@ -168,94 +261,6 @@
         app:layout_constraintStart_toStartOf="parent">
 
         <!-- ─────────────────────────────────────
-             APPEARANCE PANEL (above dock, initially GONE)
-             ───────────────────────────────────── -->
-        <LinearLayout
-            android:id="@+id/appearancePanel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="bottom|center_horizontal"
-            android:layout_marginBottom="72dp"
-            android:background="@drawable/bg_appearance_panel"
-            android:elevation="12dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp"
-            android:visibility="gone">
-
-            <!-- Light mode -->
-            <LinearLayout
-                android:id="@+id/modeLightBtn"
-                android:layout_width="72dp"
-                android:layout_height="48dp"
-                android:background="@drawable/ripple_dock_button"
-                android:gravity="center"
-                android:orientation="vertical">
-                <TextView
-                    android:id="@+id/modeLightLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="☀"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="16sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/mode_light"
-                    android:textColor="#AAffffff"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <!-- Dark mode -->
-            <LinearLayout
-                android:id="@+id/modeDarkBtn"
-                android:layout_width="72dp"
-                android:layout_height="48dp"
-                android:background="@drawable/ripple_dock_button"
-                android:gravity="center"
-                android:orientation="vertical">
-                <TextView
-                    android:id="@+id/modeDarkLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="◑"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="16sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/mode_dark"
-                    android:textColor="#AAFFFFF0"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <!-- Night mode -->
-            <LinearLayout
-                android:id="@+id/modeNightBtn"
-                android:layout_width="72dp"
-                android:layout_height="48dp"
-                android:background="@drawable/ripple_dock_button"
-                android:gravity="center"
-                android:orientation="vertical">
-                <TextView
-                    android:id="@+id/modeNightLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🌙"
-                    android:textColor="#FFFFFFFF"
-                    android:textSize="16sp" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/mode_night"
-                    android:textColor="#AAFFFFF0"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <!-- ─────────────────────────────────────
              VIEW DOCK  (default visible)
              ───────────────────────────────────── -->
         <LinearLayout
@@ -266,15 +271,15 @@
             android:background="@drawable/bg_dock"
             android:elevation="16dp"
             android:orientation="vertical"
-            android:paddingTop="8dp"
-            android:paddingBottom="4dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp"
             android:gravity="center_horizontal">
 
-            <!-- Drag handle - 32dp touch target, 5dp visual pill centred inside -->
+            <!-- Drag handle - 20dp touch target, 5dp visual pill centred inside -->
             <View
                 android:id="@+id/viewDockHandle"
                 android:layout_width="40dp"
-                android:layout_height="32dp"
+                android:layout_height="20dp"
                 android:background="@drawable/bg_dock_handle_touch" />
 
             <HorizontalScrollView
@@ -285,7 +290,7 @@
 
             <LinearLayout
                 android:layout_width="wrap_content"
-                android:layout_height="56dp"
+                android:layout_height="48dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingHorizontal="8dp">
@@ -298,8 +303,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/search"
                     android:src="@drawable/ic_search"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Divider -->
                 <View
@@ -316,8 +321,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/zoom_out"
                     android:src="@drawable/ic_zoom_out"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Zoom percentage -->
                 <TextView
@@ -325,7 +330,7 @@
                     android:layout_width="52dp"
                     android:layout_height="wrap_content"
                     android:gravity="center"
-                    android:textColor="@color/dock_icon_dark"
+                    android:textColor="@color/dock_icon"
                     android:textSize="12sp"
                     android:fontFamily="sans-serif-medium"
                     tools:text="100%" />
@@ -338,8 +343,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/zoom_in"
                     android:src="@drawable/ic_zoom_in"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Divider -->
                 <View
@@ -356,8 +361,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/previous_page"
                     android:src="@drawable/ic_navigate_before"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Next page -->
                 <ImageButton
@@ -367,8 +372,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/next_page"
                     android:src="@drawable/ic_navigate_next"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Divider -->
                 <View
@@ -385,8 +390,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/appearance"
                     android:src="@drawable/ic_appearance"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Options -->
                 <ImageButton
@@ -396,8 +401,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/options"
                     android:src="@drawable/ic_tune"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
             </LinearLayout>
             </HorizontalScrollView>
@@ -414,16 +419,16 @@
             android:background="@drawable/bg_dock"
             android:elevation="16dp"
             android:orientation="vertical"
-            android:paddingTop="8dp"
-            android:paddingBottom="4dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp"
             android:gravity="center_horizontal"
             android:visibility="gone">
 
-            <!-- Drag handle - 32dp touch target, 5dp visual pill centred inside -->
+            <!-- Drag handle - 20dp touch target, 5dp visual pill centred inside -->
             <View
                 android:id="@+id/annotationDockHandle"
                 android:layout_width="40dp"
-                android:layout_height="32dp"
+                android:layout_height="20dp"
                 android:background="@drawable/bg_dock_handle_touch" />
 
             <HorizontalScrollView
@@ -435,7 +440,7 @@
             <LinearLayout
                 android:id="@+id/annotationDockInner"
                 android:layout_width="wrap_content"
-                android:layout_height="56dp"
+                android:layout_height="48dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingHorizontal="8dp">
@@ -448,8 +453,8 @@
                     android:background="@drawable/bg_tool_selected"
                     android:contentDescription="@string/tool_pen"
                     android:src="@drawable/ic_pen"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Highlight -->
                 <ImageButton
@@ -459,8 +464,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/tool_highlight"
                     android:src="@drawable/ic_highlight"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Eraser -->
                 <ImageButton
@@ -470,8 +475,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/tool_eraser"
                     android:src="@drawable/ic_eraser"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Shapes -->
                 <ImageButton
@@ -481,8 +486,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/tool_shapes"
                     android:src="@drawable/ic_shapes"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Divider -->
                 <View
@@ -534,8 +539,8 @@
                     android:background="@null"
                     android:contentDescription="@string/pick_color"
                     android:src="@drawable/ic_color_circle"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Divider -->
                 <View
@@ -552,8 +557,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="Decrease stroke"
                     android:src="@drawable/ic_zoom_out"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Stroke size label -->
                 <TextView
@@ -562,7 +567,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:text="2.5"
-                    android:textColor="@color/dock_icon_dark"
+                    android:textColor="@color/dock_icon"
                     android:textSize="11sp" />
 
                 <!-- Stroke size increase -->
@@ -573,8 +578,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="Increase stroke"
                     android:src="@drawable/ic_zoom_in"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Divider -->
                 <View
@@ -591,8 +596,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/undo"
                     android:src="@drawable/ic_undo"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Redo -->
                 <ImageButton
@@ -602,8 +607,8 @@
                     android:background="@drawable/ripple_dock_button"
                     android:contentDescription="@string/redo"
                     android:src="@drawable/ic_redo"
-                    android:tint="@color/dock_icon_dark"
-                    app:tint="@color/dock_icon_dark" />
+                    android:tint="@color/dock_icon"
+                    app:tint="@color/dock_icon" />
 
                 <!-- Divider -->
                 <View
@@ -640,21 +645,21 @@
             android:background="@drawable/bg_dock"
             android:elevation="16dp"
             android:orientation="vertical"
-            android:paddingTop="8dp"
-            android:paddingBottom="4dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="2dp"
             android:gravity="center_horizontal"
             android:visibility="gone">
 
-            <!-- Drag handle - 32dp touch target, 5dp visual pill centred inside -->
+            <!-- Drag handle - 20dp touch target, 5dp visual pill centred inside -->
             <View
                 android:id="@+id/searchDockHandle"
                 android:layout_width="40dp"
-                android:layout_height="32dp"
+                android:layout_height="20dp"
                 android:background="@drawable/bg_dock_handle_touch" />
 
             <LinearLayout
                 android:layout_width="wrap_content"
-                android:layout_height="56dp"
+                android:layout_height="48dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingHorizontal="12dp">
@@ -667,8 +672,8 @@
                 android:background="@drawable/ripple_dock_button"
                 android:contentDescription="@string/close_search"
                 android:src="@drawable/ic_close_small"
-                android:tint="@color/dock_icon_dark"
-                app:tint="@color/dock_icon_dark" />
+                android:tint="@color/dock_icon"
+                app:tint="@color/dock_icon" />
 
             <!-- Search input -->
             <EditText
@@ -683,8 +688,8 @@
                 android:inputType="text"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:textColor="@color/dock_icon_dark"
-                android:textColorHint="#60FFFFFF"
+                android:textColor="@color/dock_icon"
+                android:textColorHint="@color/dock_text"
                 android:textSize="14sp" />
 
             <!-- Match count -->
@@ -693,7 +698,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="4dp"
-                android:textColor="#80FFFFFF"
+                android:textColor="@color/dock_text"
                 android:textSize="11sp"
                 tools:text="12 matches" />
 
@@ -705,8 +710,8 @@
                 android:background="@drawable/ripple_dock_button"
                 android:contentDescription="@string/previous_match"
                 android:src="@drawable/ic_navigate_before"
-                android:tint="@color/dock_icon_dark"
-                app:tint="@color/dock_icon_dark" />
+                android:tint="@color/dock_icon"
+                app:tint="@color/dock_icon" />
 
             <!-- Next match -->
             <ImageButton
@@ -716,8 +721,8 @@
                 android:background="@drawable/ripple_dock_button"
                 android:contentDescription="@string/next_match"
                 android:src="@drawable/ic_navigate_next"
-                android:tint="@color/dock_icon_dark"
-                app:tint="@color/dock_icon_dark" />
+                android:tint="@color/dock_icon"
+                app:tint="@color/dock_icon" />
 
             </LinearLayout>
         </LinearLayout>

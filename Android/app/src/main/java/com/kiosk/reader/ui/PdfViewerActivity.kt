@@ -27,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
@@ -142,6 +143,7 @@ class PdfViewerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        searchJob?.cancel()
         uiHandler.removeCallbacks(showUIRunnable)
         binding.pdfView.release()
         currentDocument?.close()
@@ -153,19 +155,100 @@ class PdfViewerActivity : AppCompatActivity() {
     // Window insets  (edge-to-edge top/bottom padding)
     // ══════════════════════════════════════════════════════════════════════
 
+    /** Stores the base translationY for the dock (without keyboard offset). */
+    private var dockBaseTranslationY: Float = 0f
+    /** Current keyboard (IME) height in pixels. */
+    private var currentImeHeight: Int = 0
+
     private fun applyWindowInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout) { v, insets ->
             val sys = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
             binding.topBar.updatePadding(top = sys.top)
             dockNavInsets = nav.bottom
+
+            // Apply content top padding to PDF view so content doesn't render under header
+            // Post to ensure topBar has been measured
+            binding.topBar.post {
+                val headerHeight = binding.topBar.height.toFloat()
+                binding.pdfView.setContentTopPadding(headerHeight)
+                binding.annotationLayer.setContentTopPadding(headerHeight)
+            }
+
             // Init controller now if layout has been measured, else defer..
             if (v.height > 0) initDockPositionController()
             else v.post { initDockPositionController() }
             insets
         }
+
+        // Keyboard-aware dock positioning with smooth animation
+        setupKeyboardAnimation()
+
         // Fallback: post after first layout pass in case insets fire first
         binding.rootLayout.post { initDockPositionController() }
+    }
+
+    /**
+     * Sets up WindowInsetsAnimationCompat.Callback to animate the dock
+     * smoothly as the keyboard opens/closes — matching WhatsApp/Telegram UX.
+     */
+    private fun setupKeyboardAnimation() {
+        ViewCompat.setWindowInsetsAnimationCallback(
+            binding.dockContainer,
+            object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_STOP) {
+
+                override fun onProgress(
+                    insets: WindowInsetsCompat,
+                    runningAnimations: MutableList<WindowInsetsAnimationCompat>
+                ): WindowInsetsCompat {
+                    // Find the IME animation (if any)
+                    val imeAnimation = runningAnimations.find { anim ->
+                        (anim.typeMask and WindowInsetsCompat.Type.ime()) != 0
+                    }
+                    if (imeAnimation != null) {
+                        val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+                        val navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+                        // Keyboard offset = IME height minus nav bar (which dock already respects)
+                        val keyboardOffset = (imeInsets.bottom - navInsets.bottom).coerceAtLeast(0)
+                        // Move dock up by keyboard offset
+                        binding.dockContainer.translationY = dockBaseTranslationY - keyboardOffset
+                    }
+                    return insets
+                }
+
+                override fun onEnd(animation: WindowInsetsAnimationCompat) {
+                    // Animation ended — apply final state
+                    val insets = ViewCompat.getRootWindowInsets(binding.dockContainer)
+                    if (insets != null) {
+                        val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+                        val navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+                        currentImeHeight = (imeInsets.bottom - navInsets.bottom).coerceAtLeast(0)
+                        binding.dockContainer.translationY = dockBaseTranslationY - currentImeHeight
+                    }
+                }
+            }
+        )
+
+        // Also listen for static inset changes (e.g., keyboard already open on config change)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.dockContainer) { _, insets ->
+            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            currentImeHeight = (imeInsets.bottom - navInsets.bottom).coerceAtLeast(0)
+            // Only apply if no animation is running (animation handles its own updates)
+            if (!isImeAnimationRunning()) {
+                binding.dockContainer.translationY = dockBaseTranslationY - currentImeHeight
+            }
+            insets
+        }
+    }
+
+    /** Check if an IME animation is currently running. */
+    private fun isImeAnimationRunning(): Boolean {
+        val insets = ViewCompat.getRootWindowInsets(binding.dockContainer) ?: return false
+        return insets.isVisible(WindowInsetsCompat.Type.ime()) &&
+               ViewCompat.getRootWindowInsets(binding.rootLayout)?.let {
+                   it.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
+               } == true
     }
 
     private fun initDockPositionController() {
@@ -250,6 +333,9 @@ class PdfViewerActivity : AppCompatActivity() {
         // Exit previous mode
         if (fromMode == DockMode.ANNOTATION && toMode != DockMode.ANNOTATION) {
             exitAnnotationMode()
+        }
+        if (fromMode == DockMode.SEARCH && toMode != DockMode.SEARCH) {
+            binding.pdfView.clearSearchHighlights()
         }
 
         // Enter new mode
@@ -416,16 +502,7 @@ class PdfViewerActivity : AppCompatActivity() {
     }
 
     private fun showMoreOptions() {
-        val options = arrayOf("Go to page\u2026", "PDF Info", "About")
-        AlertDialog.Builder(this)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showGoToPageDialog()
-                    1 -> showPdfInfoDialog()
-                    2 -> showBriefToast("Kiosk \u2013 Premium PDF Reader")
-                }
-            }
-            .show()
+        showPdfInfoDialog()
     }
 
     private fun showGoToPageDialog() {
@@ -702,31 +779,59 @@ class PdfViewerActivity : AppCompatActivity() {
     }
 
     // ─── Search logic ────────────────────────────────────────────────────
-    // Note: Android's PdfRenderer does not expose a text-extraction API.
-    // The UI is fully implemented and ready for a text-extraction backend.
-    // When you integrate a library that supports text search (e.g. PdfBox,
-    // PDFium, MuPDF), replace the stub below with real results.
+    // Real PDF text search powered by PdfBox text extraction.
 
     private var searchResults: List<Int> = emptyList()  // page indices of matches
     private var searchResultIndex = 0
+    private var searchJob: kotlinx.coroutines.Job? = null
+    private var totalSearchMatches = 0
 
     private fun performSearch(query: String) {
         if (query.isBlank()) {
             binding.searchMatchCount.text = ""
+            searchResults = emptyList()
+            totalSearchMatches = 0
+            binding.pdfView.clearSearchHighlights()
             return
         }
         hideKeyboardIfVisible()
 
-        // TODO: Replace with real text-extraction search when PDF engine supports it.
-        // For now, show a graceful "not available" message.
-        searchResults = emptyList()
-        binding.searchMatchCount.text = getString(R.string.search_no_matches)
+        val uri = currentUri
+        if (uri == null) {
+            binding.searchMatchCount.text = getString(R.string.search_no_matches)
+            return
+        }
 
-        Snackbar.make(
-            binding.root,
-            "Full-text search requires an indexable PDF library",
-            Snackbar.LENGTH_LONG
-        ).show()
+        // Cancel any in-flight search
+        searchJob?.cancel()
+        binding.searchMatchCount.text = getString(R.string.searching)
+
+        searchJob = lifecycleScope.launch {
+            try {
+                val (results, highlights) = com.kiosk.reader.pdf.PdfTextExtractor.searchWithHighlights(
+                    this@PdfViewerActivity, uri, query
+                )
+
+                searchResults = results.map { it.pageIndex }
+                totalSearchMatches = results.sumOf { it.matchCount }
+                searchResultIndex = 0
+
+                // Pass highlight rects to the PDF view for rendering
+                binding.pdfView.setSearchHighlights(highlights)
+
+                if (searchResults.isEmpty()) {
+                    binding.searchMatchCount.text = getString(R.string.search_no_matches)
+                } else {
+                    binding.searchMatchCount.text =
+                        getString(R.string.search_match_counter, 1, searchResults.size)
+                    binding.pdfView.goToPage(searchResults[0])
+                }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // Search was cancelled — user typed a new query
+            } catch (_: Exception) {
+                binding.searchMatchCount.text = getString(R.string.search_no_matches)
+            }
+        }
     }
 
     private fun navigateSearchResult(forward: Boolean) {
@@ -738,7 +843,7 @@ class PdfViewerActivity : AppCompatActivity() {
         }
         binding.pdfView.goToPage(searchResults[searchResultIndex])
         binding.searchMatchCount.text =
-            "${searchResultIndex + 1} / ${searchResults.size}"
+            getString(R.string.search_match_counter, searchResultIndex + 1, searchResults.size)
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -785,13 +890,13 @@ class PdfViewerActivity : AppCompatActivity() {
         binding.pdfView.setBackgroundColor(bgColor)
         binding.pdfView.setNightMode(mode == AppearanceMode.NIGHT)
 
-        // Update selected-mode visual indicator
+        // Update selected-mode visual indicator (alpha on the whole button)
         listOf(
-            binding.modeLightLabel to AppearanceMode.LIGHT,
-            binding.modeDarkLabel  to AppearanceMode.DARK,
-            binding.modeNightLabel to AppearanceMode.NIGHT
-        ).forEach { (label, m) ->
-            label.alpha = if (m == mode) 1.0f else 0.45f
+            binding.modeLightBtn to AppearanceMode.LIGHT,
+            binding.modeDarkBtn  to AppearanceMode.DARK,
+            binding.modeNightBtn to AppearanceMode.NIGHT
+        ).forEach { (btn, m) ->
+            btn.alpha = if (m == mode) 1.0f else 0.45f
         }
 
         dismissAppearancePanel()
@@ -825,8 +930,11 @@ class PdfViewerActivity : AppCompatActivity() {
             if (binding.annotationLayer.visibility == View.VISIBLE) {
                 binding.annotationLayer.invalidate()
             }
-            // Update zoom percentage in dock
-            val scalePct = (binding.pdfView.getScale() * 100f).roundToInt()
+            // Update zoom percentage in dock (relative to fit-width)
+            val fitScale = binding.pdfView.getFitScale()
+            val scalePct = if (fitScale > 0f)
+                ((binding.pdfView.getScale() / fitScale) * 100f).roundToInt()
+            else 100
             if (scalePct != lastReportedScale.roundToInt()) {
                 lastReportedScale = scalePct.toFloat()
                 runOnUiThread {
@@ -869,9 +977,11 @@ class PdfViewerActivity : AppCompatActivity() {
             .translationY(-binding.topBar.height.toFloat())
             .setDuration(250)
             .start()
-        // Slide dock below screen
+        // Slide dock below screen — update base so keyboard animation still works
+        val hiddenTranslation = binding.dockContainer.height.toFloat() + 200f
+        dockBaseTranslationY = hiddenTranslation
         binding.dockContainer.animate()
-            .translationY(binding.dockContainer.height.toFloat() + 200f)
+            .translationY(hiddenTranslation - currentImeHeight)
             .setDuration(250)
             .start()
     }
@@ -884,11 +994,19 @@ class PdfViewerActivity : AppCompatActivity() {
             .setDuration(200)
             .start()
         // Restore dock to its DockPositionController state
+        dockBaseTranslationY = 0f
         if (::dockPositionController.isInitialized) {
             dockPositionController.snapTo(dockPositionController.currentState, animate = true)
+            // Also apply keyboard offset if keyboard is open
+            if (currentImeHeight > 0) {
+                binding.dockContainer.animate()
+                    .translationY(-currentImeHeight.toFloat())
+                    .setDuration(200)
+                    .start()
+            }
         } else {
             binding.dockContainer.animate()
-                .translationY(0f)
+                .translationY(-currentImeHeight.toFloat())
                 .setDuration(200)
                 .start()
         }

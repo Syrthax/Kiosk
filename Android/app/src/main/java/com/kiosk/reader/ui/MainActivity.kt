@@ -154,9 +154,28 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Check if we still have access
+        // Check if we hold a persisted read permission for this URI
+        val hasPersistedPermission = contentResolver.persistedUriPermissions.any {
+            it.uri == uri && it.isReadPermission
+        }
+
+        // Verify the file is still accessible via openFileDescriptor (more
+        // reliable than openInputStream for content:// URIs)
         try {
-            contentResolver.openInputStream(uri)?.close()
+            contentResolver.openFileDescriptor(uri, "r")?.close()
+        } catch (_: SecurityException) {
+            // Permission lost — release stale persisted grant if any
+            if (hasPersistedPermission) {
+                try {
+                    contentResolver.releasePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) { }
+            }
+            Toast.makeText(this, R.string.file_moved_or_deleted, Toast.LENGTH_SHORT).show()
+            recentPdfsManager.removeRecent(entry.uriString)
+            refreshRecentsList()
+            return
         } catch (_: Exception) {
             Toast.makeText(this, R.string.file_moved_or_deleted, Toast.LENGTH_SHORT).show()
             recentPdfsManager.removeRecent(entry.uriString)

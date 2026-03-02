@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Appearance sub-panel (below dock). -->
+<!-- Appearance sub-panel (above dock) – theme-aware. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#D01C1C1E" />
+    <solid android:color="@color/dock_surface" />
     <corners android:radius="20dp" />
     <stroke
         android:width="0.75dp"
-        android:color="#28FFFFFF" />
+        android:color="@color/dock_border" />
 </shape>

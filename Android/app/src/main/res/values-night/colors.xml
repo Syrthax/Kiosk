@@ -38,16 +38,24 @@
     <color name="accent">#E53935</color>
     <color name="ripple_color">#33E53935</color>
 
-    <!-- Dock colours same as light –– always dark glass -->
+    <!-- Dock colours – dark theme variant -->
+    <color name="dock_surface">#CC1C1C1E</color>
+    <color name="dock_border">#28FFFFFF</color>
+    <color name="dock_icon">#FFFFFFFF</color>
+    <color name="dock_text">#AAFFFFFF</color>
     <color name="dock_bg_dark">#D01C1C1E</color>
     <color name="dock_bg_light">#D0F2F2F7</color>
     <color name="dock_icon_dark">#FFFFFFFF</color>
     <color name="dock_icon_light">#FF1C1C1E</color>
     <color name="dock_divider">#28FFFFFF</color>
 
+    <!-- Top-bar (dark mode: frosted dark) -->
     <color name="top_bar_bg">#F0111111</color>
     <color name="top_bar_text">#FFFFFFFF</color>
     <color name="top_bar_icon">#CCFFFFFF</color>
+
+    <!-- Dock handle indicator -->
+    <color name="dock_handle">#B3FFFFFF</color>
 
     <color name="pill_bg">#80000000</color>
     <color name="pill_text">#FFFFFFFF</color>

@@ -11,6 +11,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.widget.EdgeEffect
 import android.widget.OverScroller
 import androidx.core.content.ContextCompat
 import androidx.core.view.GestureDetectorCompat
@@ -18,6 +19,7 @@ import androidx.core.view.ViewCompat
 import com.kiosk.reader.R
 import com.kiosk.reader.pdf.PageCache
 import com.kiosk.reader.pdf.PdfDocument
+import com.kiosk.reader.pdf.PdfTextExtractor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -53,12 +56,16 @@ class ContinuousPdfView @JvmOverloads constructor(
     private var pageGap: Int = 16.dpToPx()
 
     // Zoom and scroll state
+    private var scrollX: Float = 0f
     private var scrollY: Float = 0f
     private var scale: Float = 1.0f
     private var minScale: Float = 0.5f
     private var maxScale: Float = 4.0f
     private var fitScale: Float = 1.0f
     private var baseRenderScale: Float = 1.0f
+
+    // Content inset for header (so PDF doesn't render under the top bar)
+    private var contentTopPadding: Float = 0f
 
     // Per-page fit-width scales (each page fills full view width independently)
     private val pageFitScales = mutableListOf<Float>()
@@ -71,14 +78,19 @@ class ContinuousPdfView @JvmOverloads constructor(
     private val flingScroller = OverScroller(context)
     private var flingRunnable: Runnable? = null
 
+    // Edge effects for overscroll feedback (Google Drive-style)
+    private val edgeEffectTop = EdgeEffect(context)
+    private val edgeEffectBottom = EdgeEffect(context)
+
     // Rendering
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val nightModePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val bitmapMatrix = Matrix()
     private val pageCache = PageCache(128)
     
-    // Night mode (DO NOT MODIFY)
+    // Night mode with dynamic page window (2 pages above & below current)
     private var nightModeEnabled: Boolean = false
+    private var nightModePageWindow: Set<Int> = emptySet()
     private val invertColorMatrix = ColorMatrix(
         floatArrayOf(
             -1f, 0f, 0f, 0f, 255f,
@@ -87,6 +99,13 @@ class ContinuousPdfView @JvmOverloads constructor(
             0f, 0f, 0f, 1f, 0f
         )
     )
+
+    // ── Search highlights ────────────────────────────────────────────────
+    private var searchHighlightsByPage: Map<Int, List<PdfTextExtractor.SearchHighlight>> = emptyMap()
+    private val searchHighlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = 0x60FFEB3B.toInt() // semi-transparent yellow
+    }
 
     // Gesture detection
     private val scaleGestureDetector: ScaleGestureDetector
@@ -132,11 +151,9 @@ class ContinuousPdfView @JvmOverloads constructor(
      * Uses canvas transforms only - NO re-rendering during gesture.
      */
     private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        private var focusY: Float = 0f
         
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
             isScaling = true
-            focusY = detector.focusY
             qualityUpgradeJob?.cancel()
             return true
         }
@@ -149,14 +166,21 @@ class ContinuousPdfView @JvmOverloads constructor(
             val newScale = (scale * scaleFactor).coerceIn(minScale, maxScale)
             
             if (newScale != prevScale) {
-                focusY = detector.focusY
-                val contentY = scrollY + focusY
+                val focusX = detector.focusX
+                val focusY = detector.focusY
+                val ratio = newScale / prevScale
                 
                 scale = newScale
                 updateContentDimensions()
                 
-                val newContentY = contentY * (newScale / prevScale)
-                scrollY = (newContentY - focusY).coerceIn(0f, maxScrollY())
+                // Focal-point zoom: keep the content point under fingers stationary.
+                // Y accounts for content top padding; X accounts for center-aligned pages.
+                val contentY = scrollY + focusY - contentTopPadding
+                val contentX = scrollX + focusX - width / 2f
+                scrollY = (contentY * ratio + contentTopPadding - focusY)
+                    .coerceIn(0f, maxScrollY())
+                scrollX = (contentX * ratio + width / 2f - focusX)
+                    .coerceIn(minScrollX(), maxScrollX())
                 
                 invalidate()
             }
@@ -182,7 +206,25 @@ class ContinuousPdfView @JvmOverloads constructor(
             distanceY: Float
         ): Boolean {
             if (!isScaling && allowSingleFingerGestures) {
-                scrollY = (scrollY + distanceY).coerceIn(0f, maxScrollY())
+                val oldScrollY = scrollY
+                val newScrollY = (scrollY + distanceY).coerceIn(0f, maxScrollY())
+                val consumed = newScrollY - oldScrollY
+                val overscroll = distanceY - consumed
+
+                scrollY = newScrollY
+
+                // Horizontal pan (only meaningful when zoomed in)
+                scrollX = (scrollX + distanceX).coerceIn(minScrollX(), maxScrollX())
+
+                // Trigger edge effect for overscroll feedback
+                if (abs(overscroll) > 0.5f && width > 0) {
+                    if (overscroll < 0 && scrollY <= 0f) {
+                        edgeEffectTop.onPull(-overscroll / height)
+                    } else if (overscroll > 0 && scrollY >= maxScrollY()) {
+                        edgeEffectBottom.onPull(overscroll / height)
+                    }
+                }
+
                 invalidate()
                 updateCurrentPage()
                 onScrollDelta?.invoke(distanceY)
@@ -197,7 +239,7 @@ class ContinuousPdfView @JvmOverloads constructor(
             velocityY: Float
         ): Boolean {
             if (!isScaling && allowSingleFingerGestures) {
-                startFling(-velocityY.toInt())
+                startFling(-velocityX.toInt(), -velocityY.toInt())
             }
             return true
         }
@@ -221,14 +263,15 @@ class ContinuousPdfView @JvmOverloads constructor(
 
     // ─── Fling via OverScroller ─────────────────────────────────────────
 
-    private fun startFling(velocityY: Int) {
+    private fun startFling(velocityX: Int, velocityY: Int) {
         flingScroller.forceFinished(true)
         flingScroller.fling(
-            0, scrollY.toInt(),
-            0, velocityY,
-            0, 0,
+            scrollX.toInt(), scrollY.toInt(),
+            velocityX, velocityY,
+            minScrollX().toInt(), maxScrollX().toInt(),
             0, maxScrollY().toInt(),
-            0, (48 * resources.displayMetrics.density).toInt() // edge overscroll glow
+            (24 * resources.displayMetrics.density).toInt(), // horizontal overscroll
+            (48 * resources.displayMetrics.density).toInt()  // vertical overscroll glow
         )
         tickFling()
     }
@@ -236,7 +279,20 @@ class ContinuousPdfView @JvmOverloads constructor(
     private fun tickFling() {
         flingRunnable = Runnable {
             if (flingScroller.computeScrollOffset()) {
-                scrollY = flingScroller.currY.toFloat().coerceIn(0f, maxScrollY())
+                val oldScrollY = scrollY
+                val newScrollY = flingScroller.currY.toFloat().coerceIn(0f, maxScrollY())
+                scrollY = newScrollY
+
+                // Horizontal axis
+                scrollX = flingScroller.currX.toFloat().coerceIn(minScrollX(), maxScrollX())
+
+                // Absorb velocity into edge effect when hitting bounds
+                if (oldScrollY <= 0f && flingScroller.currVelocity < 0) {
+                    edgeEffectTop.onAbsorb(abs(flingScroller.currVelocity.toInt()))
+                } else if (oldScrollY >= maxScrollY() && flingScroller.currVelocity > 0) {
+                    edgeEffectBottom.onAbsorb(abs(flingScroller.currVelocity.toInt()))
+                }
+
                 invalidate()
                 updateCurrentPage()
                 tickFling()
@@ -282,24 +338,49 @@ class ContinuousPdfView @JvmOverloads constructor(
         val pagesToPreload = mutableSetOf<Int>()
         pagesToPreload.addAll(visiblePages)
         
+        // Preload ±2 pages for Google Drive-level smoothness
         visiblePages.forEach { page ->
-            if (page > 0) pagesToPreload.add(page - 1)
-            if (page < pageCount - 1) pagesToPreload.add(page + 1)
+            for (offset in 1..2) {
+                if (page - offset >= 0) pagesToPreload.add(page - offset)
+                if (page + offset < pageCount) pagesToPreload.add(page + offset)
+            }
         }
 
-        for (pageIndex in pagesToPreload) {
+        // Cancel render jobs for pages that have scrolled far off-screen
+        val keepPages = mutableSetOf<Int>()
+        visiblePages.forEach { page ->
+            for (offset in -3..3) {
+                val p = page + offset
+                if (p in 0 until pageCount) keepPages.add(p)
+            }
+        }
+        renderJobs.keys.toList().forEach { jobPage ->
+            if (jobPage !in keepPages) {
+                renderJobs[jobPage]?.cancel()
+                renderJobs.remove(jobPage)
+            }
+        }
+
+        // Render visible pages first (full quality), then preload pages
+        for (pageIndex in visiblePages) {
             if (pageCache.getBestAvailable(pageIndex) == null && !renderJobs.containsKey(pageIndex)) {
-                renderPageAsync(document, pageIndex)
+                renderPageAsync(document, pageIndex, isPreload = false)
+            }
+        }
+        for (pageIndex in pagesToPreload) {
+            if (pageIndex !in visiblePages && pageCache.getBestAvailable(pageIndex) == null && !renderJobs.containsKey(pageIndex)) {
+                renderPageAsync(document, pageIndex, isPreload = true)
             }
         }
     }
 
-    private fun renderPageAsync(document: PdfDocument, pageIndex: Int) {
+    private fun renderPageAsync(document: PdfDocument, pageIndex: Int, isPreload: Boolean = false) {
         renderJobs[pageIndex] = viewScope.launch {
             try {
-                // Per-page render scale: ensures each page fills screen width
+                // Per-page render scale: visible pages get 2× headroom, preload gets 1.5×
+                val qualityMultiplier = if (isPreload) 1.5f else 2.0f
                 val pageRenderScale = if (pageIndex < pageFitScales.size)
-                    pageFitScales[pageIndex] * 2.0f   // 2× headroom for zoom quality
+                    pageFitScales[pageIndex] * qualityMultiplier
                 else
                     baseRenderScale
 
@@ -320,8 +401,9 @@ class ContinuousPdfView @JvmOverloads constructor(
 
     private fun getVisiblePageIndices(): List<Int> {
         val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
-        val visibleTop = scrollY
-        val visibleBottom = scrollY + height
+        // Visible area accounts for header padding
+        val visibleTop = scrollY - contentTopPadding
+        val visibleBottom = scrollY + height - contentTopPadding
         val visiblePages = mutableListOf<Int>()
 
         var pageTop = 0f
@@ -343,7 +425,11 @@ class ContinuousPdfView @JvmOverloads constructor(
 
     private fun smoothZoomTo(targetScale: Float, focusX: Float, focusY: Float) {
         val startScale = scale
-        val contentY = scrollY + focusY
+        val startScrollY = scrollY
+        val startScrollX = scrollX
+        // Pre-compute content-space coordinates of the focal point
+        val contentY = startScrollY + focusY - contentTopPadding
+        val contentX = startScrollX + focusX - width / 2f
         
         viewScope.launch {
             val duration = 200L
@@ -357,8 +443,12 @@ class ContinuousPdfView @JvmOverloads constructor(
                 scale = startScale + (targetScale - startScale) * eased
                 updateContentDimensions()
                 
-                val newContentY = contentY * (scale / startScale)
-                scrollY = (newContentY - focusY).coerceIn(0f, maxScrollY())
+                // Focal-point zoom: keep the content point under the tap stationary
+                val ratio = scale / startScale
+                scrollY = (contentY * ratio + contentTopPadding - focusY)
+                    .coerceIn(0f, maxScrollY())
+                scrollX = (contentX * ratio + width / 2f - focusX)
+                    .coerceIn(minScrollX(), maxScrollX())
                 
                 invalidate()
                 updateCurrentPage()
@@ -366,6 +456,9 @@ class ContinuousPdfView @JvmOverloads constructor(
                 if (progress >= 1f) break
                 delay(16)
             }
+            
+            // Snap scrollX to 0 when at fit-width (no horizontal content overflow)
+            if (maxScrollX() <= 0f) scrollX = 0f
             
             scheduleQualityUpgrade()
         }
@@ -387,14 +480,15 @@ class ContinuousPdfView @JvmOverloads constructor(
                 pageDimensions.clear()
                 maxPageWidth = 0
 
-                for (i in 0 until pageCount) {
-                    val dims = document.getPageDimensions(i)
-                    if (dims != null) {
-                        pageDimensions.add(dims)
-                        maxPageWidth = max(maxPageWidth, dims.first)
-                    } else {
-                        pageDimensions.add(Pair(612, 792))
-                    }
+                // Batch-load ALL page dimensions in a single mutex lock
+                val allDims = document.getAllPageDimensions()
+                for (dims in allDims) {
+                    pageDimensions.add(dims)
+                    maxPageWidth = max(maxPageWidth, dims.first)
+                }
+                // Pad with defaults if batch returned fewer than expected
+                while (pageDimensions.size < pageCount) {
+                    pageDimensions.add(Pair(612, 792))
                 }
 
                 // Compute per-page fit-width scale so every page fills the screen
@@ -411,11 +505,12 @@ class ContinuousPdfView @JvmOverloads constructor(
                     scale = fitScale
                     minScale = fitScale              // 1× = can't zoom out below fit-width
                     maxScale = fitScale * 5.0f       // 5× zoom
-                    baseRenderScale = fitScale * 2.0f
+                    baseRenderScale = fitScale
                 }
 
                 updateContentDimensions()
                 scrollY = 0f
+                scrollX = 0f
                 
                 withContext(Dispatchers.Main) {
                     invalidate()
@@ -436,6 +531,9 @@ class ContinuousPdfView @JvmOverloads constructor(
     // ──────────────────────────────────────────────────────────────────────
     // State accessors for AnnotationLayer coordinate mapping
     // ──────────────────────────────────────────────────────────────────────
+
+    /** Current horizontal scroll offset in pixel content-space. */
+    fun getPdfScrollX(): Float = scrollX
 
     /** Current vertical scroll offset in pixel content-space. */
     fun getPdfScrollY(): Float = scrollY
@@ -469,9 +567,47 @@ class ContinuousPdfView @JvmOverloads constructor(
     fun setNightMode(enabled: Boolean) {
         if (nightModeEnabled != enabled) {
             nightModeEnabled = enabled
+            updateNightModePageWindow()
             invalidate()
         }
     }
+
+    /** Set search highlight rectangles; they are drawn over page content. */
+    fun setSearchHighlights(highlights: List<PdfTextExtractor.SearchHighlight>) {
+        searchHighlightsByPage = highlights.groupBy { it.pageIndex }
+        invalidate()
+    }
+
+    /** Remove all search highlights. */
+    fun clearSearchHighlights() {
+        searchHighlightsByPage = emptyMap()
+        invalidate()
+    }
+
+    /** Recompute which pages should render in night mode (current ±2). */
+    private fun updateNightModePageWindow() {
+        if (!nightModeEnabled) {
+            nightModePageWindow = emptySet()
+            return
+        }
+        val windowPages = mutableSetOf<Int>()
+        for (offset in -2..2) {
+            val page = currentVisiblePage + offset
+            if (page in 0 until pageCount) windowPages.add(page)
+        }
+        nightModePageWindow = windowPages
+    }
+
+    /** Set content top padding to prevent PDF rendering under header. */
+    fun setContentTopPadding(paddingPx: Float) {
+        if (contentTopPadding != paddingPx) {
+            contentTopPadding = paddingPx
+            updateContentDimensions()
+            invalidate()
+        }
+    }
+
+    fun getContentTopPadding(): Float = contentTopPadding
     
     fun isNightModeEnabled(): Boolean = nightModeEnabled
 
@@ -501,7 +637,32 @@ class ContinuousPdfView @JvmOverloads constructor(
         }
     }
 
-    private fun maxScrollY(): Float = max(0f, totalContentHeight - height)
+    private fun maxScrollY(): Float = max(0f, totalContentHeight + contentTopPadding - height)
+
+    /** Maximum horizontal content width at current zoom (widest page). */
+    private fun maxContentWidth(): Float {
+        if (pageDimensions.isEmpty()) return 0f
+        val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
+        var maxW = 0f
+        for (i in pageDimensions.indices) {
+            val pageFit = pageFitScales.getOrElse(i) { fitScale }
+            val pw = pageDimensions[i].first * pageFit * zoomRatio
+            if (pw > maxW) maxW = pw
+        }
+        return maxW
+    }
+
+    /** Minimum scrollX (can be negative when content wider than view). */
+    private fun minScrollX(): Float {
+        val overflow = maxContentWidth() - width
+        return if (overflow > 0f) -(overflow / 2f) else 0f
+    }
+
+    /** Maximum scrollX. */
+    private fun maxScrollX(): Float {
+        val overflow = maxContentWidth() - width
+        return if (overflow > 0f) (overflow / 2f) else 0f
+    }
 
     private fun getPageTop(pageIndex: Int): Float {
         val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
@@ -520,7 +681,8 @@ class ContinuousPdfView @JvmOverloads constructor(
 
         val zoomRatio = if (fitScale > 0f) scale / fitScale else 1f
         var accumulatedHeight = 0f
-        val viewCenter = scrollY + height / 3f
+        // Account for content top padding when determining view center
+        val viewCenter = scrollY + (height - contentTopPadding) / 3f
 
         for (i in pageDimensions.indices) {
             val pageFit = pageFitScales.getOrElse(i) { fitScale }
@@ -529,6 +691,8 @@ class ContinuousPdfView @JvmOverloads constructor(
                 if (i != currentVisiblePage) {
                     currentVisiblePage = i
                     onPageChanged?.invoke(currentVisiblePage, pageCount)
+                    // Update night mode page window when current page changes
+                    if (nightModeEnabled) updateNightModePageWindow()
                 }
                 onTransformChanged?.invoke()
                 return
@@ -539,6 +703,7 @@ class ContinuousPdfView @JvmOverloads constructor(
         if (currentVisiblePage != pageCount - 1) {
             currentVisiblePage = pageCount - 1
             onPageChanged?.invoke(currentVisiblePage, pageCount)
+            if (nightModeEnabled) updateNightModePageWindow()
         }
         onTransformChanged?.invoke()
     }
@@ -554,7 +719,7 @@ class ContinuousPdfView @JvmOverloads constructor(
             
             minScale = fitScale              // 1×
             maxScale = fitScale * 5.0f       // 5×
-            baseRenderScale = fitScale * 2.0f
+            baseRenderScale = fitScale
 
             // Recompute per-page scales for new width
             pageFitScales.clear()
@@ -565,6 +730,7 @@ class ContinuousPdfView @JvmOverloads constructor(
             
             updateContentDimensions()
             scrollY = scrollY.coerceIn(0f, maxScrollY())
+            scrollX = scrollX.coerceIn(minScrollX(), maxScrollX())
             
             ensureVisiblePagesLoaded()
         }
@@ -574,8 +740,8 @@ class ContinuousPdfView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (pageDimensions.isEmpty()) return
 
-        val activePaint = if (nightModeEnabled) nightModePaint else paint
-        var pageTop = -scrollY
+        // Content starts below the header padding, offset by scroll
+        var pageTop = contentTopPadding - scrollY
 
         // At fitScale (default zoom = 1×) every page fills the view width.
         // The global `scale` can differ from fitScale when the user zooms.
@@ -593,31 +759,81 @@ class ContinuousPdfView @JvmOverloads constructor(
             val displayHeight = origHeight * effectiveScale
             val pageBottom = pageTop + displayHeight
 
+            // Only draw pages that are visible on screen
             if (pageBottom >= 0 && pageTop <= height) {
-                val left = (width - displayWidth) / 2f
+                // Apply horizontal scroll offset (0 when at fit-width, nonzero when zoomed in)
+                val left = (width - displayWidth) / 2f - scrollX
 
-                if (!nightModeEnabled) {
+                // Per-page night mode: only pages in window (current ±2) get inverted
+                val useNightPaint = nightModeEnabled && nightModePageWindow.contains(i)
+                val drawPaint = if (useNightPaint) nightModePaint else paint
+
+                // Draw page background (white for light mode, skip for night mode)
+                if (!useNightPaint) {
                     paint.color = 0xFFFFFFFF.toInt()
                     canvas.drawRect(left, pageTop, left + displayWidth, pageBottom, paint)
                 }
 
-                val entry = pageCache.getBestAvailable(i)
-                if (entry != null && !entry.bitmap.isRecycled) {
-                    val bw = entry.bitmap.width.toFloat()
-                    val bh = entry.bitmap.height.toFloat()
+                // Draw bitmap with crash protection
+                try {
+                    val entry = pageCache.getBestAvailable(i)
+                    if (entry != null && !entry.bitmap.isRecycled) {
+                        val bw = entry.bitmap.width.toFloat()
+                        val bh = entry.bitmap.height.toFloat()
 
-                    bitmapMatrix.reset()
-                    bitmapMatrix.postScale(displayWidth / bw, displayHeight / bh)
-                    bitmapMatrix.postTranslate(left, pageTop)
+                        if (bw > 0 && bh > 0) {
+                            bitmapMatrix.reset()
+                            bitmapMatrix.postScale(displayWidth / bw, displayHeight / bh)
+                            bitmapMatrix.postTranslate(left, pageTop)
 
-                    canvas.drawBitmap(entry.bitmap, bitmapMatrix, activePaint)
-                } else {
+                            canvas.drawBitmap(entry.bitmap, bitmapMatrix, drawPaint)
+                        }
+                    } else {
+                        // Placeholder for unloaded page
+                        paint.color = if (useNightPaint) 0xFF1A1A1A.toInt() else 0xFFF0F0F0.toInt()
+                        canvas.drawRect(left, pageTop, left + displayWidth, pageBottom, paint)
+                    }
+                } catch (e: Exception) {
+                    // Bitmap was recycled mid-draw or other error — draw placeholder
                     paint.color = 0xFFF0F0F0.toInt()
                     canvas.drawRect(left, pageTop, left + displayWidth, pageBottom, paint)
+                }
+
+                // ── Search highlights ────────────────────────────────────
+                val pageHL = searchHighlightsByPage[i]
+                if (pageHL != null) {
+                    for (h in pageHL) {
+                        val hLeft   = left + h.x * effectiveScale
+                        val hTop    = pageTop + h.y * effectiveScale
+                        val hRight  = hLeft + h.width * effectiveScale
+                        val hBottom = hTop + h.height * effectiveScale
+                        canvas.drawRect(hLeft, hTop, hRight, hBottom, searchHighlightPaint)
+                    }
                 }
             }
 
             pageTop = pageBottom + pageGap
+        }
+
+        // Draw edge effects (overscroll glow)
+        if (!edgeEffectTop.isFinished) {
+            canvas.save()
+            edgeEffectTop.setSize(width, height)
+            if (edgeEffectTop.draw(canvas)) {
+                ViewCompat.postInvalidateOnAnimation(this)
+            }
+            canvas.restore()
+        }
+
+        if (!edgeEffectBottom.isFinished) {
+            canvas.save()
+            canvas.translate(width.toFloat(), height.toFloat())
+            canvas.rotate(180f)
+            edgeEffectBottom.setSize(width, height)
+            if (edgeEffectBottom.draw(canvas)) {
+                ViewCompat.postInvalidateOnAnimation(this)
+            }
+            canvas.restore()
         }
     }
 
@@ -653,6 +869,9 @@ class ContinuousPdfView @JvmOverloads constructor(
         
         if (event.actionMasked == MotionEvent.ACTION_UP || 
             event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            // Release edge effects
+            edgeEffectTop.onRelease()
+            edgeEffectBottom.onRelease()
             if (!isScaling) {
                 ensureVisiblePagesLoaded()
             }
