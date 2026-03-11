@@ -32,97 +32,78 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ─── 1. Checkout Code ──────────────────────────────────────────
+      # 1) Checkout repository so we can update downloads.json.
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ─── 2. Fetch Latest Release & Extract URLs ────────────────────
-      - name: Fetch latest release and generate downloads.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Get the latest release as JSON
-          RELEASE_JSON=$(gh release view --json assets,tagName,name --format=json)
-          
-          echo "Release data retrieved:"
-          echo "$RELEASE_JSON" | jq .
-          
-          # Extract URLs for each platform (by file extension/name pattern)
-          MACOS_DMG=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("macos") and contains(".dmg") and (contains("arm") or contains("aarch"))) | .url' | head -1)
-          MACOS_INTEL_DMG=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("macos-intel") and contains(".dmg")) | .url' | head -1)
-          LINUX_APPIMAGE=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("linux") and contains(".AppImage")) | .url' | head -1)
-          LINUX_DEB=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("linux") and contains(".deb")) | .url' | head -1)
-          WINDOWS_MSI=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("windows") and contains(".msi")) | .url' | head -1)
-          WINDOWS_EXE=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("windows") and contains(".exe")) | .url' | head -1)
-          ANDROID_APK=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("android") and contains(".apk")) | .url' | head -1)
-          
-          # Build the JSON object
-          cat > downloads.json << EOF
-          {
-            "version": "$(echo "$RELEASE_JSON" | jq -r '.tagName' | sed 's/v//')",
-            "macos": {
-              "name": "Kiosk macOS (Apple Silicon)",
-              "file": "Kiosk.dmg",
-              "url": "${MACOS_DMG:-null}",
-              "format": "DMG"
-            },
-            "macos_intel": {
-              "name": "Kiosk macOS (Intel)",
-              "file": "Kiosk-Intel.dmg",
-              "url": "${MACOS_INTEL_DMG:-null}",
-              "format": "DMG"
-            },
-            "linux_appimage": {
-              "name": "Kiosk Linux (AppImage)",
-              "file": "Kiosk.AppImage",
-              "url": "${LINUX_APPIMAGE:-null}",
-              "format": "AppImage"
-            },
-            "linux_deb": {
-              "name": "Kiosk Linux (Debian/Ubuntu)",
-              "file": "kiosk_1.5.2_amd64.deb",
-              "url": "${LINUX_DEB:-null}",
-              "format": "DEB"
-            },
-            "windows_msi": {
-              "name": "Kiosk Windows (Installer)",
-              "file": "Kiosk.msi",
-              "url": "${WINDOWS_MSI:-null}",
-              "format": "MSI"
-            },
-            "windows_exe": {
-              "name": "Kiosk Windows (Portable)",
-              "file": "Kiosk-Setup.exe",
-              "url": "${WINDOWS_EXE:-null}",
-              "format": "EXE"
-            },
-            "android": {
-              "name": "Kiosk Android",
-              "file": "Kiosk.apk",
-              "url": "${ANDROID_APK:-null}",
-              "format": "APK"
-            }
-          }
-          EOF
-          
-          echo "=== Generated downloads.json ==="
-          cat downloads.json
-          jq . downloads.json
+      # 2) Use GitHub API to map release assets -> website download links.
+      - name: Generate downloads.json from release assets
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
 
-      # ─── 3. Commit & Push updated downloads.json ────────────────────
+            // Prefer the triggering release payload. Fallback to latest release.
+            let release = context.payload.release;
+            if (!release || !Array.isArray(release.assets)) {
+              const latest = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              release = latest.data;
+            }
+
+            const assets = release.assets || [];
+
+            function pick(predicate) {
+              const match = assets.find(a => predicate(a.name || ''));
+              return match ? match.browser_download_url : '';
+            }
+
+            const lower = (s) => s.toLowerCase();
+
+            const downloads = {
+              macos: pick((n) => {
+                const x = lower(n);
+                return x.endsWith('.dmg') && x.includes('kiosk-macos_');
+              }),
+              macos_intel: pick((n) => {
+                const x = lower(n);
+                return x.endsWith('.dmg') && x.includes('kiosk-macos-intel_');
+              }),
+              linux: pick((n) => {
+                const x = lower(n);
+                return x.includes('kiosk-linux_') && (x.endsWith('.appimage') || x.endsWith('.deb'));
+              }),
+              windows: pick((n) => {
+                const x = lower(n);
+                return x.includes('kiosk-windows_') && (x.endsWith('.msi') || x.endsWith('.exe'));
+              }),
+              android: pick((n) => {
+                const x = lower(n);
+                return x.includes('kiosk-android_') && x.endsWith('.apk');
+              }),
+            };
+
+            fs.writeFileSync('downloads.json', JSON.stringify(downloads, null, 2) + '\n');
+            core.info(`downloads.json generated for tag ${release.tag_name}`);
+
+      # 3) Commit the updated file back to main.
       - name: Commit and push downloads.json
+        shell: bash
         run: |
+          set -euo pipefail
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Check if there are changes
-          if git diff --quiet downloads.json; then
+
+          if git diff --quiet -- downloads.json; then
             echo "No changes to downloads.json"
           else
             git add downloads.json
             git commit -m "chore: update downloads.json for release ${{ github.event.release.tag_name }}"
             git push origin main
-            echo "✓ downloads.json updated and committed"
+            echo "Updated downloads.json"
           fi
 
 # ────────────────────────────────────────────────────────────────────

@@ -20,8 +20,7 @@ name: Release
 
 on:
   workflow_run:
-    workflows: [Build]
-    branches: [main]
+    workflows: ["Build"]
     types: [completed]
 
 permissions:
@@ -29,142 +28,115 @@ permissions:
   actions: read
 
 env:
-  # Increment this when releasing a new version
   APP_VERSION: "1.5.2"
 
 jobs:
   release:
+    # Only publish when the upstream Build workflow succeeded.
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    
     runs-on: ubuntu-latest
 
     steps:
-      # ─── 1. Checkout Code ──────────────────────────────────────────
+      # 1) Checkout repository for tag operations.
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ─── 2. Download All Artifacts ─────────────────────────────────
-      - name: Download all artifacts
+      # 2) Download all artifacts from the completed Build run.
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
+          path: artifacts
 
-      # ─── 3. Detect Available Artifacts & Build Compatibility Tag ────
-      - name: Detect artifacts and build compatibility tag
+      # 3) Detect which platform artifacts exist and compute release tag.
+      - name: Compute compatibility suffix and release metadata
         id: detect
+        shell: bash
         run: |
-          cd artifacts
-          
-          # Initialize compatibility flags
-          COMPAT_TAG=""
-          ARTIFACT_FILES=""
-          
-          # Check for each artifact type
-          if [ -d "kiosk-macos" ] && [ "$(ls -A kiosk-macos/ 2>/dev/null)" ]; then
-            COMPAT_TAG="${COMPAT_TAG}m"
-            ARTIFACT_FILES="${ARTIFACT_FILES} artifacts/kiosk-macos/*"
-            echo "✓ macOS (Apple Silicon) detected"
-          fi
-          
-          if [ -d "kiosk-macos-intel" ] && [ "$(ls -A kiosk-macos-intel/ 2>/dev/null)" ]; then
-            COMPAT_TAG="${COMPAT_TAG}m64"
-            ARTIFACT_FILES="${ARTIFACT_FILES} artifacts/kiosk-macos-intel/*"
-            echo "✓ macOS (Intel) detected"
-          fi
-          
-          if [ -d "kiosk-linux" ] && [ "$(ls -A kiosk-linux/ 2>/dev/null)" ]; then
-            COMPAT_TAG="${COMPAT_TAG}l"
-            ARTIFACT_FILES="${ARTIFACT_FILES} artifacts/kiosk-linux/*"
-            echo "✓ Linux detected"
-          fi
-          
-          if [ -d "kiosk-windows" ] && [ "$(ls -A kiosk-windows/ 2>/dev/null)" ]; then
-            COMPAT_TAG="${COMPAT_TAG}w"
-            ARTIFACT_FILES="${ARTIFACT_FILES} artifacts/kiosk-windows/*"
-            echo "✓ Windows detected"
-          fi
-          
-          if [ -d "kiosk-android" ] && [ "$(ls -A kiosk-android/ 2>/dev/null)" ]; then
-            COMPAT_TAG="${COMPAT_TAG}a"
-            ARTIFACT_FILES="${ARTIFACT_FILES} artifacts/kiosk-android/*"
-            echo "✓ Android detected"
-          fi
-          
-          # Construct the git tag
-          TAG="v${APP_VERSION}-${COMPAT_TAG}"
-          RELEASE_NAME="Kiosk v${APP_VERSION}"
-          
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "release_name=${RELEASE_NAME}" >> $GITHUB_OUTPUT
-          echo "artifact_files=${ARTIFACT_FILES}" >> $GITHUB_OUTPUT
-          echo ""
-          echo "Tag: ${TAG}"
-          echo "Release: ${RELEASE_NAME}"
+          set -euo pipefail
 
-      # ─── 4. Create Git Tag ─────────────────────────────────────────
-      - name: Create git tag
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.detect.outputs.tag }}
-          git push origin ${{ steps.detect.outputs.tag }}
+          suffix=""
+          [[ -d artifacts/kiosk-macos && "$(find artifacts/kiosk-macos -type f | head -1)" ]] && suffix+="m"
+          [[ -d artifacts/kiosk-macos-intel && "$(find artifacts/kiosk-macos-intel -type f | head -1)" ]] && suffix+="m64"
+          [[ -d artifacts/kiosk-linux && "$(find artifacts/kiosk-linux -type f | head -1)" ]] && suffix+="l"
+          [[ -d artifacts/kiosk-windows && "$(find artifacts/kiosk-windows -type f | head -1)" ]] && suffix+="w"
+          [[ -d artifacts/kiosk-android && "$(find artifacts/kiosk-android -type f | head -1)" ]] && suffix+="a"
 
-      # ─── 5. Flatten and Prepare Assets ────────────────────────────
-      - name: Prepare release assets
+          if [[ -z "$suffix" ]]; then
+            echo "No release artifacts found; aborting."
+            exit 1
+          fi
+
+          tag="v${APP_VERSION}-${suffix}"
+          title="Kiosk v${APP_VERSION}"
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
+
+          echo "Release tag: $tag"
+
+      # 4) Flatten artifacts into a single upload folder.
+      - name: Collect release assets
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p release-assets
-          
-          # Copy and flatten all artifacts
-          if [ -d "artifacts/kiosk-macos" ]; then
-            find artifacts/kiosk-macos -type f \( -name "*.dmg" -o -name "*.app" -o -name "*.tar.gz" \) \
-              -exec cp {} release-assets/ \;
-          fi
-          
-          if [ -d "artifacts/kiosk-macos-intel" ]; then
-            find artifacts/kiosk-macos-intel -type f \( -name "*.dmg" -o -name "*.app" -o -name "*.tar.gz" \) \
-              -exec cp {} release-assets/ \;
-          fi
-          
-          if [ -d "artifacts/kiosk-linux" ]; then
-            find artifacts/kiosk-linux -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) \
-              -exec cp {} release-assets/ \;
-          fi
-          
-          if [ -d "artifacts/kiosk-windows" ]; then
-            find artifacts/kiosk-windows -type f \( -name "*.msi" -o -name "*.exe" \) \
-              -exec cp {} release-assets/ \;
-          fi
-          
-          if [ -d "artifacts/kiosk-android" ]; then
-            find artifacts/kiosk-android -type f -name "*.apk" \
-              -exec cp {} release-assets/ \;
-          fi
-          
-          echo "=== Release Assets ==="
-          ls -lh release-assets/
 
-      # ─── 6. Create GitHub Release ──────────────────────────────────
-      - name: Create GitHub Release
+          while IFS= read -r file; do
+            rel="${file#artifacts/}"
+            artifact="${rel%%/*}"
+            base="$(basename "$file")"
+            cp "$file" "release-assets/${artifact}_${base}"
+          done < <(find artifacts -type f \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.msi" -o -name "*.exe" -o -name "*.apk" \))
+
+          count="$(find release-assets -type f | wc -l | tr -d ' ')"
+          if [[ "$count" == "0" ]]; then
+            echo "No release assets collected; aborting."
+            exit 1
+          fi
+
+          echo "Collected $count release assets"
+          ls -lah release-assets
+
+      # 5) Create/push the git tag if it does not already exist.
+      - name: Ensure release tag exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.detect.outputs.tag }}"
+          git fetch --tags --force
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Tag $tag already exists; reusing existing tag."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$tag"
+            git push origin "$tag"
+          fi
+
+      # 6) Publish release and attach all artifacts.
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.detect.outputs.tag }}
-          name: ${{ steps.detect.outputs.release_name }}
+          name: ${{ steps.detect.outputs.title }}
           body: |
-            ## Kiosk ${{ env.APP_VERSION }}
-            
-            Automated release with support for:
-            - macOS (Apple Silicon & Intel)
-            - Linux
-            - Windows
-            - Android
-            
-            **Download the appropriate version for your platform below.**
-            
-            Built with ❤️ using Tauri & Rust
+            Automated release for Kiosk ${{ env.APP_VERSION }}.
+
+            Compatibility suffix: `${{ steps.detect.outputs.suffix }}`
+            - m: macOS ARM
+            - m64: macOS Intel
+            - l: Linux
+            - w: Windows
+            - a: Android
           files: release-assets/*
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
