@@ -1,0 +1,145 @@
+# ────────────────────────────────────────────────────────────────────
+# Kiosk — Update Download Links (downloads.json)
+# ────────────────────────────────────────────────────────────────────
+#
+# This workflow runs whenever a new GitHub Release is published.
+#
+# It:
+# 1. Fetches the latest release information
+# 2. Extracts download URLs for each platform's artifacts
+# 3. Generates/updates downloads.json with the URLs
+# 4. Commits and pushes the updated file back to the repository
+#
+# The downloads.json file is used by the website to populate
+# download buttons automatically without manual updates.
+#
+# Triggers:
+# • When a GitHub Release is published
+#
+# ────────────────────────────────────────────────────────────────────
+
+name: Update Download Links
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update-downloads:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─── 1. Checkout Code ──────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ─── 2. Fetch Latest Release & Extract URLs ────────────────────
+      - name: Fetch latest release and generate downloads.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the latest release as JSON
+          RELEASE_JSON=$(gh release view --json assets,tagName,name --format=json)
+          
+          echo "Release data retrieved:"
+          echo "$RELEASE_JSON" | jq .
+          
+          # Extract URLs for each platform (by file extension/name pattern)
+          MACOS_DMG=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("macos") and contains(".dmg") and (contains("arm") or contains("aarch"))) | .url' | head -1)
+          MACOS_INTEL_DMG=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("macos-intel") and contains(".dmg")) | .url' | head -1)
+          LINUX_APPIMAGE=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("linux") and contains(".AppImage")) | .url' | head -1)
+          LINUX_DEB=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("linux") and contains(".deb")) | .url' | head -1)
+          WINDOWS_MSI=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("windows") and contains(".msi")) | .url' | head -1)
+          WINDOWS_EXE=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("windows") and contains(".exe")) | .url' | head -1)
+          ANDROID_APK=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | contains("android") and contains(".apk")) | .url' | head -1)
+          
+          # Build the JSON object
+          cat > downloads.json << EOF
+          {
+            "version": "$(echo "$RELEASE_JSON" | jq -r '.tagName' | sed 's/v//')",
+            "macos": {
+              "name": "Kiosk macOS (Apple Silicon)",
+              "file": "Kiosk.dmg",
+              "url": "${MACOS_DMG:-null}",
+              "format": "DMG"
+            },
+            "macos_intel": {
+              "name": "Kiosk macOS (Intel)",
+              "file": "Kiosk-Intel.dmg",
+              "url": "${MACOS_INTEL_DMG:-null}",
+              "format": "DMG"
+            },
+            "linux_appimage": {
+              "name": "Kiosk Linux (AppImage)",
+              "file": "Kiosk.AppImage",
+              "url": "${LINUX_APPIMAGE:-null}",
+              "format": "AppImage"
+            },
+            "linux_deb": {
+              "name": "Kiosk Linux (Debian/Ubuntu)",
+              "file": "kiosk_1.5.2_amd64.deb",
+              "url": "${LINUX_DEB:-null}",
+              "format": "DEB"
+            },
+            "windows_msi": {
+              "name": "Kiosk Windows (Installer)",
+              "file": "Kiosk.msi",
+              "url": "${WINDOWS_MSI:-null}",
+              "format": "MSI"
+            },
+            "windows_exe": {
+              "name": "Kiosk Windows (Portable)",
+              "file": "Kiosk-Setup.exe",
+              "url": "${WINDOWS_EXE:-null}",
+              "format": "EXE"
+            },
+            "android": {
+              "name": "Kiosk Android",
+              "file": "Kiosk.apk",
+              "url": "${ANDROID_APK:-null}",
+              "format": "APK"
+            }
+          }
+          EOF
+          
+          echo "=== Generated downloads.json ==="
+          cat downloads.json
+          jq . downloads.json
+
+      # ─── 3. Commit & Push updated downloads.json ────────────────────
+      - name: Commit and push downloads.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if there are changes
+          if git diff --quiet downloads.json; then
+            echo "No changes to downloads.json"
+          else
+            git add downloads.json
+            git commit -m "chore: update downloads.json for release ${{ github.event.release.tag_name }}"
+            git push origin main
+            echo "✓ downloads.json updated and committed"
+          fi
+
+# ────────────────────────────────────────────────────────────────────
+# Workflow Summary
+# ────────────────────────────────────────────────────────────────────
+#
+# This workflow:
+# 1. Runs whenever a new GitHub Release is published
+# 2. Uses gh CLI to fetch the latest release info
+# 3. Extracts download URLs for each platform's build artifacts
+# 4. Generates a JSON file with version, platform names, and URLs
+# 5. Commits the updated downloads.json back to main branch
+#
+# The downloads.json file is structured with platform-specific entries,
+# including human-readable names, file names, download URLs, and formats.
+#
+# Website can import this JSON and auto-populate download buttons
+# without needing manual updates.
+#
+# ────────────────────────────────────────────────────────────────────

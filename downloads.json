@@ -1,0 +1,45 @@
+{
+  "version": "1.5.2",
+  "macos": {
+    "name": "Kiosk macOS (Apple Silicon)",
+    "file": "Kiosk.dmg",
+    "url": "https://github.com/Syrthax/Kiosk/releases/download/...",
+    "format": "DMG"
+  },
+  "macos_intel": {
+    "name": "Kiosk macOS (Intel)",
+    "file": "Kiosk-Intel.dmg",
+    "url": "https://github.com/Syrthax/Kiosk/releases/download/...",
+    "format": "DMG"
+  },
+  "linux_appimage": {
+    "name": "Kiosk Linux (AppImage)",
+    "file": "Kiosk.AppImage",
+    "url": "https://github.com/Syrthax/Kiosk/releases/download/...",
+    "format": "AppImage"
+  },
+  "linux_deb": {
+    "name": "Kiosk Linux (Debian/Ubuntu)",
+    "file": "kiosk_1.5.2_amd64.deb",
+    "url": "https://github.com/Syrthax/Kiosk/releases/download/...",
+    "format": "DEB"
+  },
+  "windows_msi": {
+    "name": "Kiosk Windows (Installer)",
+    "file": "Kiosk.msi",
+    "url": "https://github.com/Syrthax/Kiosk/releases/download/...",
+    "format": "MSI"
+  },
+  "windows_exe": {
+    "name": "Kiosk Windows (Portable)",
+    "file": "Kiosk-Setup.exe",
+    "url": "https://github.com/Syrthax/Kiosk/releases/download/...",
+    "format": "EXE"
+  },
+  "android": {
+    "name": "Kiosk Android",
+    "file": "Kiosk.apk",
+    "url": "https://github.com/Syrthax/Kiosk/releases/download/...",
+    "format": "APK"
+  }
+}
