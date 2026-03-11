@@ -35,6 +35,8 @@ import com.google.android.material.snackbar.Snackbar
 import com.kiosk.reader.R
 import com.kiosk.reader.data.RecentPdfsManager
 import com.kiosk.reader.databinding.ActivityPdfViewerBinding
+import com.kiosk.reader.pdf.InvalidPasswordException
+import com.kiosk.reader.pdf.PasswordRequiredException
 import com.kiosk.reader.pdf.PdfAnnotationWriter
 import com.kiosk.reader.pdf.PdfDocument
 import com.kiosk.reader.ui.viewer.AnnotationLayer
@@ -1048,7 +1050,7 @@ class PdfViewerActivity : AppCompatActivity() {
         return uri.lastPathSegment?.substringAfterLast('/') ?: "Untitled.pdf"
     }
 
-    private fun loadPdf(uri: Uri) {
+    private fun loadPdf(uri: Uri, password: String? = null) {
         currentUri = uri
         showLoading()
         hideError()
@@ -1058,7 +1060,7 @@ class PdfViewerActivity : AppCompatActivity() {
                 currentDocument?.close()
                 currentDocument = null
 
-                val result = PdfDocument.open(this@PdfViewerActivity, uri)
+                val result = PdfDocument.open(this@PdfViewerActivity, uri, password)
                 result.fold(
                     onSuccess = { document ->
                         currentDocument = document
@@ -1069,13 +1071,64 @@ class PdfViewerActivity : AppCompatActivity() {
                         }
                     },
                     onFailure = { error ->
-                        withContext(Dispatchers.Main) { showError(getErrorMessage(error)) }
+                        withContext(Dispatchers.Main) {
+                            when (error) {
+                                is PasswordRequiredException -> {
+                                    hideLoading()
+                                    showPasswordDialog(uri, showError = false)
+                                }
+                                is InvalidPasswordException -> {
+                                    hideLoading()
+                                    showPasswordDialog(uri, showError = true)
+                                }
+                                else -> showError(getErrorMessage(error))
+                            }
+                        }
                     }
                 )
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { showError(getErrorMessage(e)) }
             }
         }
+    }
+
+    /**
+     * Shows a password prompt AlertDialog for encrypted PDFs.
+     * The password is kept only in memory and never stored.
+     */
+    private fun showPasswordDialog(uri: Uri, showError: Boolean) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = getString(R.string.password_hint)
+            setSingleLine()
+        }
+
+        val builder = AlertDialog.Builder(this)
+            .setTitle(R.string.password_dialog_title)
+            .setMessage(
+                if (showError) getString(R.string.password_dialog_error)
+                else getString(R.string.password_dialog_message)
+            )
+            .setView(input)
+            .setPositiveButton(R.string.password_dialog_open) { dialog, _ ->
+                val pw = input.text.toString()
+                input.text.clear()          // clear from UI immediately
+                dialog.dismiss()
+                loadPdf(uri, pw)            // retry with password
+            }
+            .setNegativeButton(R.string.close) { dialog, _ ->
+                input.text.clear()
+                dialog.dismiss()
+                finish()
+            }
+            .setCancelable(false)
+
+        val dialog = builder.create()
+        dialog.setOnShowListener {
+            input.requestFocus()
+            showKeyboard(input)
+        }
+        dialog.show()
     }
 
     private fun updateTitle(uri: Uri) {
@@ -1119,14 +1172,18 @@ class PdfViewerActivity : AppCompatActivity() {
         binding.errorContainer.visibility = View.GONE
     }
 
-    private fun getErrorMessage(error: Throwable): String = when {
-        error.message?.contains("Permission", ignoreCase = true) == true ->
-            getString(R.string.error_permission_denied)
-        error.message?.contains("not found", ignoreCase = true) == true ->
-            getString(R.string.error_file_not_found)
-        error.message?.contains("corrupt", ignoreCase = true) == true ->
-            getString(R.string.error_corrupted_pdf)
-        else -> getString(R.string.error_loading_pdf) + ": ${error.message}"
+    private fun getErrorMessage(error: Throwable): String = when (error) {
+        is PasswordRequiredException -> getString(R.string.error_password_required)
+        is InvalidPasswordException  -> getString(R.string.error_invalid_password)
+        else -> when {
+            error.message?.contains("Permission", ignoreCase = true) == true ->
+                getString(R.string.error_permission_denied)
+            error.message?.contains("not found", ignoreCase = true) == true ->
+                getString(R.string.error_file_not_found)
+            error.message?.contains("corrupt", ignoreCase = true) == true ->
+                getString(R.string.error_corrupted_pdf)
+            else -> getString(R.string.error_loading_pdf) + ": ${error.message}"
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════

@@ -42,6 +42,16 @@ export interface LoadResult {
   info: DocumentInfo;
 }
 
+/**
+ * Structured result from load_pdf / load_pdf_bytes.
+ * Tagged union: check `status` to determine the variant.
+ */
+export type LoadPdfResult =
+  | { status: 'Success'; data: LoadResult }
+  | { status: 'PasswordRequired' }
+  | { status: 'InvalidPassword' }
+  | { status: 'Error'; message: string };
+
 /** Text rectangle for highlights/selection */
 export interface TextRect {
   x: number;
@@ -59,22 +69,35 @@ export interface SearchResult {
   rects: TextRect[];
 }
 
+/**
+ * Phase 4: Result of a page render — raw RGBA pixels + dimensions.
+ * `pixels` is base64-encoded RGBA data (4 bytes per pixel, row-major).
+ */
+export interface RenderResult {
+  pixels: string;
+  width: number;
+  height: number;
+}
+
 // ============================================================================
 // PDF API
 // ============================================================================
 
 /**
  * Load a PDF from a file path.
+ * Pass `password` = null for first attempt; if the result is
+ * `PasswordRequired`, retry with the user-supplied password.
  */
-export async function loadPdf(path: string): Promise<LoadResult> {
-  return invoke<LoadResult>('load_pdf', { path });
+export async function loadPdf(path: string, password: string | null = null): Promise<LoadPdfResult> {
+  return invoke<LoadPdfResult>('load_pdf', { path, password });
 }
 
 /**
  * Load a PDF from bytes (e.g., from drag-and-drop).
+ * Same password semantics as loadPdf.
  */
-export async function loadPdfBytes(bytes: Uint8Array): Promise<LoadResult> {
-  return invoke<LoadResult>('load_pdf_bytes', { bytes: Array.from(bytes) });
+export async function loadPdfBytes(bytes: Uint8Array, password: string | null = null): Promise<LoadPdfResult> {
+  return invoke<LoadPdfResult>('load_pdf_bytes', { bytes: Array.from(bytes), password });
 }
 
 /**
@@ -106,20 +129,53 @@ export async function getAllPageInfos(docId: string): Promise<PageInfo[]> {
 }
 
 /**
- * Render a page to PNG bytes.
+ * Render a page to raw RGBA pixels.
+ *
+ * PHASE 4: Returns a RenderResult with base64-encoded RGBA pixel data
+ * and pixel dimensions. Replaces the PNG-based render path.
  *
  * @param docId - Document ID from loadPdf
  * @param pageIndex - 0-based page index
  * @param scale - Render scale (1.0 = 72 DPI, 2.0 = 144 DPI)
- * @returns PNG bytes as Uint8Array
+ * @returns RenderResult with base64-encoded RGBA pixels, width, height
  */
 export async function renderPage(
   docId: string,
   pageIndex: number,
   scale: number
-): Promise<Uint8Array> {
-  const bytes = await invoke<number[]>('render_page', { docId, pageIndex, scale });
-  return new Uint8Array(bytes);
+): Promise<RenderResult> {
+  return invoke<RenderResult>('render_page', { docId, pageIndex, scale });
+}
+
+/**
+ * Phase 4: Decode base64-encoded RGBA pixels to a Uint8ClampedArray
+ * backed by a plain ArrayBuffer (required by ImageData constructor).
+ */
+export function decodeBase64Rgba(b64: string): Uint8ClampedArray {
+  const binaryStr = atob(b64);
+  const len = binaryStr.length;
+  const ab = new ArrayBuffer(len);
+  const bytes = new Uint8ClampedArray(ab);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Phase 4: Create an ImageData from decoded RGBA pixels.
+ * Uses ImageData(w,h) + data.set() to avoid TypeScript strict-mode
+ * ArrayBufferLike vs ArrayBuffer type mismatch with the ImageData(data,w,h)
+ * constructor overload.
+ */
+export function createRgbaImageData(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+): ImageData {
+  const imageData = new ImageData(width, height);
+  imageData.data.set(rgba);
+  return imageData;
 }
 
 /**
@@ -276,9 +332,11 @@ export async function clearPageAnnotations(
 
 /**
  * Convert PNG bytes to a blob URL for display in <img>.
+ * NOTE: Retained for backward compatibility. Phase 4 hot path uses
+ * decodeBase64Rgba + createRgbaImageData + canvas instead.
  */
 export function pngBytesToUrl(bytes: Uint8Array): string {
-  const blob = new Blob([bytes], { type: 'image/png' });
+  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: 'image/png' });
   return URL.createObjectURL(blob);
 }
 

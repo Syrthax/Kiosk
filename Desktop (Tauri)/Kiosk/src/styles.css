@@ -302,6 +302,17 @@ html, body {
   pointer-events: none;
 }
 
+/* Phase 4: Canvas replaces <img> for rendered page content */
+.page-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* Phase 4.5: ensure smooth bilinear interpolation when pages container
+     is CSS-transformed during live zoom gestures */
+  image-rendering: auto;
+}
+
 .text-overlay {
   position: absolute;
   top: 0;
@@ -720,6 +731,315 @@ body.annotation-mode[data-tool="eraser"] .annotation-overlay {
 }
 
 .error-dialog-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* ============================================================================
+   Screen Transition Layer (Part 3 — Safe Animations)
+   Only animates wrapper containers. Never touches pagesContainer,
+   canvases, viewer scale, or render lifecycle.
+   ============================================================================ */
+
+.screen {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.screen.hidden {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  /* Keep the element in the layout but invisible.
+     position: absolute prevents it from displacing the visible screen. */
+  position: absolute;
+  z-index: -1;
+}
+
+/* ============================================================================
+   Viewer Screen — structural wrapper for toolbar + main-content
+   ============================================================================ */
+
+#viewer-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  position: relative;
+}
+
+#viewer-screen.hidden {
+  position: absolute;
+  inset: 0;
+}
+
+/* ============================================================================
+   Home Screen (Part 2)
+   ============================================================================ */
+
+#home-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  background: var(--bg-tertiary);
+  position: relative;
+  user-select: none;
+}
+
+#home-screen.hidden {
+  position: absolute;
+  inset: 0;
+}
+
+.home-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  max-width: 440px;
+  width: 100%;
+  padding: 0 24px;
+}
+
+.home-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-logo {
+  color: var(--accent-color);
+  margin-bottom: 8px;
+}
+
+.home-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+}
+
+.home-subtitle {
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.home-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  background: var(--accent-color);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.home-open-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.home-open-btn:active {
+  transform: translateY(0);
+}
+
+.home-open-btn svg {
+  flex-shrink: 0;
+}
+
+/* Recents Section */
+.home-recents {
+  width: 100%;
+}
+
+.recents-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.recents-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.recents-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.recents-item:last-child {
+  border-bottom: none;
+}
+
+.recents-item:hover {
+  background: var(--bg-hover);
+}
+
+.recents-item svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.recents-item-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recents-item-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  direction: rtl;          /* show right-most (filename) part when truncated */
+  text-align: left;
+}
+
+.recents-empty {
+  text-align: center;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Footer */
+.home-footer {
+  position: absolute;
+  bottom: 20px;
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+
+/* ============================================================================
+   Password Modal
+   ============================================================================ */
+
+.password-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: none; /* toggled to flex by JS */
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 400;
+  animation: fadeIn 120ms ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.password-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 28px 24px 24px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 16px 48px var(--shadow-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.password-modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.password-modal-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.password-modal-error {
+  font-size: 13px;
+  color: var(--accent-color);
+  margin: 0;
+  font-weight: 500;
+}
+
+.password-modal-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.password-modal-input:focus {
+  border-color: var(--accent-color);
+}
+
+.password-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.password-modal-btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.password-modal-cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.password-modal-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.password-modal-submit {
+  background: var(--accent-color);
+  color: #fff;
+}
+
+.password-modal-submit:hover {
   background: var(--accent-hover);
 }
 

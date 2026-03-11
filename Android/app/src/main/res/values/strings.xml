@@ -12,6 +12,15 @@
     <string name="error_file_not_found">File not found</string>
     <string name="error_corrupted_pdf">Unable to open this PDF. The file may be corrupted.</string>
     <string name="error_unsupported_pdf">This PDF format is not supported.</string>
+    <string name="error_password_required">This PDF is password-protected.</string>
+    <string name="error_invalid_password">Incorrect password.</string>
+
+    <!-- Password dialog -->
+    <string name="password_dialog_title">Password Required</string>
+    <string name="password_dialog_message">This PDF is protected. Enter the password to open it.</string>
+    <string name="password_dialog_error">Incorrect password. Please try again.</string>
+    <string name="password_dialog_open">Open</string>
+    <string name="password_hint">Password</string>
 
     <!-- Page indicator: "12 / 64" -->
     <string name="page_indicator">%1$d / %2$d</string>

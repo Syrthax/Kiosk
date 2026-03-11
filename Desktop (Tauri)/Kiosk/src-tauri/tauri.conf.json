@@ -82,9 +82,7 @@
         "bundleMediaFramework": false
       }
     },
-    "resources": {
-      "pdfium.dll": "./"
-    }
+    "resources": {}
   },
   "plugins": {}
 }

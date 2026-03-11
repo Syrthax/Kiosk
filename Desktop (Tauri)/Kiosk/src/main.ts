@@ -23,20 +23,158 @@ import { setAnnotationColor, onAnnotationStateChange, undoAnnotation, redoAnnota
 import { fileToBytes } from './pdf-api';
 
 // ============================================================================
+// Screen State Controller (Part 1)
+// ============================================================================
+
+/** Current visible screen. */
+type Screen = 'home' | 'viewer';
+let currentScreen: Screen | null = null;
+
+/** Guard: set to true when a file-open event/launch-file arrives during startup. */
+let startupFileReceived = false;
+
+/**
+ * Show the Home screen, hide the Viewer screen.
+ * Only toggles container visibility — no render-engine interaction.
+ */
+function showHome(): void {
+  const home = document.getElementById('home-screen');
+  const viewer = document.getElementById('viewer-screen');
+  home?.classList.remove('hidden');
+  viewer?.classList.add('hidden');
+  currentScreen = 'home';
+  renderRecentsList(); // refresh recents every time we show Home
+  hideAnnotationDock();
+}
+
+/**
+ * Show the Viewer screen, hide the Home screen.
+ * Only toggles container visibility — no render-engine interaction.
+ */
+function showViewer(): void {
+  const home = document.getElementById('home-screen');
+  const viewer = document.getElementById('viewer-screen');
+  viewer?.classList.remove('hidden');
+  home?.classList.add('hidden');
+  currentScreen = 'viewer';
+  showAnnotationDock();
+}
+
+// ============================================================================
+// Recents (Part 2)
+// ============================================================================
+
+interface RecentFile {
+  path: string;
+  name: string;
+  lastOpened: number;
+}
+
+const RECENTS_KEY = 'kiosk_recent_files';
+const MAX_RECENTS = 10;
+
+/** Read the recents list from localStorage. */
+function getRecents(): RecentFile[] {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as RecentFile[];
+  } catch {
+    return [];
+  }
+}
+
+/** Persist the recents list. */
+function saveRecents(recents: RecentFile[]): void {
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(recents));
+}
+
+/** Add (or bump) a file in the recents list. Deduplicates by path, keeps max 10. */
+function addToRecents(filePath: string): void {
+  const name = filePath.split('/').pop()?.split('\\').pop() ?? filePath;
+  let recents = getRecents().filter(r => r.path !== filePath);
+  recents.unshift({ path: filePath, name, lastOpened: Date.now() });
+  if (recents.length > MAX_RECENTS) recents = recents.slice(0, MAX_RECENTS);
+  saveRecents(recents);
+}
+
+/** Render the recents list into the Home screen. */
+function renderRecentsList(): void {
+  const list = document.getElementById('recents-list');
+  const emptyMsg = document.getElementById('recents-empty');
+  if (!list) return;
+  list.innerHTML = '';
+
+  const recents = getRecents();
+  if (recents.length === 0) {
+    if (emptyMsg) emptyMsg.style.display = '';
+    return;
+  }
+  if (emptyMsg) emptyMsg.style.display = 'none';
+
+  for (const file of recents) {
+    const li = document.createElement('li');
+    li.className = 'recents-item';
+    li.title = file.path;
+    li.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+      </svg>
+      <span class="recents-item-name">${escapeHtml(file.name)}</span>
+      <span class="recents-item-path">${escapeHtml(file.path)}</span>
+    `;
+    li.addEventListener('click', () => openRecentFile(file.path));
+    list.appendChild(li);
+  }
+}
+
+/** Minimal HTML escaper. */
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Open a recent file — switches to Viewer immediately. */
+async function openRecentFile(filePath: string): Promise<void> {
+  showViewer();
+  await openFile(filePath);
+  addToRecents(filePath);
+}
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
 window.addEventListener('DOMContentLoaded', async () => {
   initViewer();
   setupToolbar();
-  setupWelcomeScreen();
+  setupHomeScreen();
   setupAnnotationDock();
-  
+
   // Set up file open event listener (for files opened while app is running)
   await setupFileOpenListener();
-  
+
   // Check if app was launched with a PDF file
-  await checkLaunchFile();
+  try {
+    const launchFile = await invoke<string | null>('get_launch_file');
+    if (launchFile) {
+      console.log('App launched with file:', launchFile);
+      startupFileReceived = true;
+      showViewer();
+      await openFile(launchFile);
+      addToRecents(launchFile);
+    }
+  } catch (err) {
+    console.error('Failed to check launch file:', err);
+  }
+
+  // Anti-flicker: delay Home by 50 ms so a quick file-open event can skip it
+  if (!startupFileReceived) {
+    await new Promise(r => setTimeout(r, 50));
+    if (!startupFileReceived) {
+      showHome();
+    }
+  }
 });
 
 // ============================================================================
@@ -44,25 +182,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ============================================================================
 
 /**
- * Check if the app was launched with a PDF file argument.
- * This handles double-clicking a PDF or "Open with" from Finder/Explorer.
- */
-async function checkLaunchFile(): Promise<void> {
-  try {
-    const launchFile = await invoke<string | null>('get_launch_file');
-    if (launchFile) {
-      console.log('App launched with file:', launchFile);
-      await openFile(launchFile);
-      hideWelcome();
-    }
-  } catch (err) {
-    console.error('Failed to check launch file:', err);
-  }
-}
-
-/**
  * Listen for file open events from the backend.
- * This handles files opened while the app is already running.
+ * Handles files opened while the app is already running + drag-and-drop.
  */
 async function setupFileOpenListener(): Promise<void> {
   try {
@@ -70,22 +191,39 @@ async function setupFileOpenListener(): Promise<void> {
     await listen<string>('open-file', async (event) => {
       const filePath = event.payload;
       console.log('Received open-file event:', filePath);
-      
+
       if (filePath && filePath.toLowerCase().endsWith('.pdf')) {
+        startupFileReceived = true;
+        showViewer();
         await openFile(filePath);
-        hideWelcome();
+        addToRecents(filePath);
       }
     });
-    
-    // Also listen for Tauri's file drop events
+
+    // Also listen for the generic "file-open-requested" event name (alias)
+    await listen<string>('file-open-requested', async (event) => {
+      const filePath = event.payload;
+      console.log('Received file-open-requested event:', filePath);
+
+      if (filePath && filePath.toLowerCase().endsWith('.pdf')) {
+        startupFileReceived = true;
+        showViewer();
+        await openFile(filePath);
+        addToRecents(filePath);
+      }
+    });
+
+    // Tauri file drop events
     await listen<{ paths: string[] }>('tauri://file-drop', async (event) => {
       const paths = event.payload.paths;
       if (paths && paths.length > 0) {
         const pdfPath = paths.find(p => p.toLowerCase().endsWith('.pdf'));
         if (pdfPath) {
           console.log('File dropped:', pdfPath);
+          startupFileReceived = true;
+          showViewer();
           await openFile(pdfPath);
-          hideWelcome();
+          addToRecents(pdfPath);
         }
       }
     });
@@ -168,8 +306,9 @@ async function handleOpenFile(): Promise<void> {
     });
 
     if (selected && typeof selected === 'string') {
+      showViewer();
       await openFile(selected);
-      hideWelcome();
+      addToRecents(selected);
     }
   } catch (err) {
     console.error('Failed to open file dialog:', err);
@@ -177,56 +316,29 @@ async function handleOpenFile(): Promise<void> {
 }
 
 // ============================================================================
-// Welcome Screen
+// Home Screen Setup (Part 2)
 // ============================================================================
 
-function setupWelcomeScreen(): void {
-  const dropZone = document.getElementById('welcome-drop-zone');
-  const browseBtn = document.getElementById('welcome-browse');
+function setupHomeScreen(): void {
+  // "Open PDF" button on Home screen
+  document.getElementById('home-open-btn')?.addEventListener('click', handleOpenFile);
 
-  // Drag and drop
-  dropZone?.addEventListener('dragover', (e) => {
+  // Drop zone on the whole Home screen (optional convenience)
+  const homeScreen = document.getElementById('home-screen');
+  homeScreen?.addEventListener('dragover', (e) => {
     e.preventDefault();
-    dropZone.classList.add('dragover');
   });
-
-  dropZone?.addEventListener('dragleave', () => {
-    dropZone.classList.remove('dragover');
-  });
-
-  dropZone?.addEventListener('drop', async (e) => {
+  homeScreen?.addEventListener('drop', async (e) => {
     e.preventDefault();
-    dropZone.classList.remove('dragover');
-
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0) return;
-
     const file = files[0];
-    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
-      alert('Please drop a PDF file');
-      return;
-    }
-
+    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) return;
     const bytes = await fileToBytes(file);
+    showViewer();
     await openBytes(bytes, file.name);
-    hideWelcome();
+    // We don't have a path for drag-dropped File objects, so skip addToRecents
   });
-
-  // Browse button
-  browseBtn?.addEventListener('click', async () => {
-    await handleOpenFile();
-  });
-}
-
-function hideWelcome(): void {
-  const welcome = document.getElementById('welcome-screen');
-  welcome?.classList.add('hidden');
-  showAnnotationDock();
-}
-
-function showWelcome(): void {
-  const welcome = document.getElementById('welcome-screen');
-  welcome?.classList.remove('hidden');
 }
 
 // ============================================================================
@@ -571,6 +683,8 @@ export function hideAnnotationDock(): void {
 (window as any).kiosk = {
   openFile,
   openBytes,
-  showWelcome,
-  checkLaunchFile,
+  showHome,
+  showViewer,
+  getRecents,
+  get currentScreen() { return currentScreen; },
 };

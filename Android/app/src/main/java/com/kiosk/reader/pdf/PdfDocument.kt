@@ -7,6 +7,9 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException as PdfBoxInvalidPasswordException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,13 +18,20 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
+/** Thrown when a PDF is encrypted and no password was provided. */
+class PasswordRequiredException : IOException("This PDF is password-protected")
+
+/** Thrown when the supplied password is incorrect. */
+class InvalidPasswordException : IOException("Incorrect password")
+
 /**
  * PDF Document wrapper that handles PdfRenderer lifecycle
  * Thread-safe implementation for rendering PDF pages
  */
 class PdfDocument private constructor(
     private val fileDescriptor: ParcelFileDescriptor,
-    private val renderer: PdfRenderer
+    private val renderer: PdfRenderer,
+    private val tempUnlockedFile: File? = null
 ) : AutoCloseable {
 
     val pageCount: Int
@@ -140,36 +150,84 @@ class PdfDocument private constructor(
         } catch (e: Exception) {
             e.printStackTrace()
         }
+        // Clean up temp unlocked file (password was only in memory during open)
+        tempUnlockedFile?.let { file ->
+            try { file.delete() } catch (_: Exception) { }
+        }
     }
 
     companion object {
         /**
-         * Opens a PDF document from a file
+         * Opens a PDF document from a file, optionally with a password.
+         *
+         * Behaviour:
+         * 1. Load bytes via PdfBox to detect encryption.
+         *    – If encrypted and password is null → throw [PasswordRequiredException]
+         *    – If encrypted and password is wrong → throw [InvalidPasswordException]
+         * 2. If the document was encrypted, save a decrypted copy to a temp file
+         *    and hand that to PdfRenderer. The temp file is deleted on [close].
+         * 3. Non-encrypted documents are opened directly via PdfRenderer.
+         *
+         * @param file    The PDF file on disk.
+         * @param password Optional password. Only kept in memory; never stored.
          */
-        suspend fun open(file: File): Result<PdfDocument> = withContext(Dispatchers.IO) {
+        suspend fun open(file: File, password: String? = null): Result<PdfDocument> = withContext(Dispatchers.IO) {
             try {
                 if (!file.exists()) {
                     return@withContext Result.failure(IOException("File not found: ${file.absolutePath}"))
                 }
-
                 if (!file.canRead()) {
                     return@withContext Result.failure(IOException("Cannot read file: ${file.absolutePath}"))
                 }
 
+                // Try PdfBox to detect encryption
+                val pdfBoxDoc: PDDocument? = try {
+                    PDDocument.load(file, password ?: "")
+                } catch (e: PdfBoxInvalidPasswordException) {
+                    if (password == null) throw PasswordRequiredException()
+                    else throw InvalidPasswordException()
+                }
+
+                val tempFile: File?
+                val targetFile: File
+
+                if (pdfBoxDoc != null && pdfBoxDoc.isEncrypted) {
+                    // Save unlocked document to temp file for PdfRenderer
+                    pdfBoxDoc.isAllSecurityToBeRemoved = true
+                    val cacheDir = file.parentFile?.let { File(it, ".kiosk_unlock_cache") }
+                        ?: File(System.getProperty("java.io.tmpdir"), ".kiosk_unlock_cache")
+                    cacheDir.mkdirs()
+                    tempFile = File(cacheDir, "unlocked_${System.currentTimeMillis()}.pdf")
+                    FileOutputStream(tempFile).use { out ->
+                        pdfBoxDoc.save(out)
+                    }
+                    pdfBoxDoc.close()
+                    targetFile = tempFile
+                } else {
+                    pdfBoxDoc?.close()
+                    tempFile = null
+                    targetFile = file
+                }
+
                 val fileDescriptor = ParcelFileDescriptor.open(
-                    file,
+                    targetFile,
                     ParcelFileDescriptor.MODE_READ_ONLY
                 )
 
                 val renderer = PdfRenderer(fileDescriptor)
-                
+
                 if (renderer.pageCount == 0) {
                     renderer.close()
                     fileDescriptor.close()
+                    tempFile?.delete()
                     return@withContext Result.failure(IOException("PDF has no pages"))
                 }
 
-                Result.success(PdfDocument(fileDescriptor, renderer))
+                Result.success(PdfDocument(fileDescriptor, renderer, tempFile))
+            } catch (e: PasswordRequiredException) {
+                Result.failure(e)
+            } catch (e: InvalidPasswordException) {
+                Result.failure(e)
             } catch (e: SecurityException) {
                 Result.failure(IOException("Permission denied: ${e.message}"))
             } catch (e: IOException) {
@@ -180,45 +238,27 @@ class PdfDocument private constructor(
         }
 
         /**
-         * Opens a PDF document from a content URI
-         * Copies to cache if necessary for PdfRenderer compatibility
+         * Opens a PDF document from a content URI, optionally with a password.
+         * Copies to cache if necessary for PdfRenderer compatibility.
          */
-        suspend fun open(context: Context, uri: Uri): Result<PdfDocument> = withContext(Dispatchers.IO) {
+        suspend fun open(context: Context, uri: Uri, password: String? = null): Result<PdfDocument> = withContext(Dispatchers.IO) {
             try {
-                // Try to open directly first (works for some content providers)
-                val directResult = tryOpenDirect(context, uri)
-                if (directResult.isSuccess) {
-                    return@withContext directResult
-                }
+                // Initialise PdfBox resources (safe to call multiple times)
+                PDFBoxResourceLoader.init(context)
 
-                // Fall back to copying to cache
+                // First copy to cache so we have a File for PdfBox + PdfRenderer
                 val cacheFile = copyToCache(context, uri)
                     ?: return@withContext Result.failure(IOException("Failed to copy PDF to cache"))
 
-                open(cacheFile)
+                open(cacheFile, password)
+            } catch (e: PasswordRequiredException) {
+                Result.failure(e)
+            } catch (e: InvalidPasswordException) {
+                Result.failure(e)
             } catch (e: SecurityException) {
                 Result.failure(IOException("Permission denied: ${e.message}"))
             } catch (e: Exception) {
                 Result.failure(IOException("Failed to open PDF: ${e.message}"))
-            }
-        }
-
-        private fun tryOpenDirect(context: Context, uri: Uri): Result<PdfDocument> {
-            return try {
-                val fileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
-                    ?: return Result.failure(IOException("Cannot open file descriptor"))
-
-                val renderer = PdfRenderer(fileDescriptor)
-                
-                if (renderer.pageCount == 0) {
-                    renderer.close()
-                    fileDescriptor.close()
-                    return Result.failure(IOException("PDF has no pages"))
-                }
-
-                Result.success(PdfDocument(fileDescriptor, renderer))
-            } catch (e: Exception) {
-                Result.failure(e)
             }
         }
 

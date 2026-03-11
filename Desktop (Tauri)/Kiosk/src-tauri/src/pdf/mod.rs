@@ -4,6 +4,7 @@
 //! - High-DPI aware page rendering
 //! - Glyph-accurate character bounding boxes for text selection
 //! - Page metadata and navigation
+//! - Persistent document handle caching (Phase 3)
 
 mod renderer;
 
