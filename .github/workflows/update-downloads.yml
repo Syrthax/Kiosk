@@ -87,7 +87,7 @@ jobs:
             };
 
             fs.writeFileSync('downloads.json', JSON.stringify(downloads, null, 2) + '\n');
-            core.info(`downloads.json generated for tag ${release.tag_name}`);
+            core.info('downloads.json generated for tag ' + release.tag_name);
 
       # 3) Commit the updated file back to main.
       - name: Commit and push downloads.json
