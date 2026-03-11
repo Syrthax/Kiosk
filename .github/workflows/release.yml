@@ -127,7 +127,7 @@ jobs:
           body: |
             Automated release for Kiosk ${{ env.APP_VERSION }}.
 
-            Compatibility suffix: `${{ steps.detect.outputs.suffix }}`
+            Compatibility suffix: ${{ steps.detect.outputs.suffix }}
             - m: macOS ARM
             - m64: macOS Intel
             - l: Linux
