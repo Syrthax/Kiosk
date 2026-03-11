@@ -44,6 +44,12 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    // Allow R8 to proceed when optional library classes are missing.
+    // PDFBox references com.gemalto.jp2 (JPEG2000) which we don't ship.
+    lint {
+        abortOnError = false
+    }
 }
 
 dependencies {
