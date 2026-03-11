@@ -19,6 +19,9 @@ name: Build
 on:
   push:
     branches: [main]
+    paths:
+      - 'Android/**'
+      - 'Desktop (Tauri)/Kiosk/**'
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,59 @@
+# ────────────────────────────────────────────────────────────────────
+# Kiosk — Deploy Website to GitHub Pages
+# ────────────────────────────────────────────────────────────────────
+#
+# Deploys the static landing page and web assets to GitHub Pages.
+# Triggered only when website files change on main.
+#
+# ────────────────────────────────────────────────────────────────────
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'viewer.html'
+      - 'css/**'
+      - 'js/**'
+      - 'assets/**'
+      - 'downloads.json'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # 1) Checkout repository content.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2) Configure GitHub Pages.
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      # 3) Upload current repo root as static site artifact.
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      # 4) Deploy to GitHub Pages.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
