@@ -173,8 +173,9 @@ jobs:
           Write-Host "Installed pdfium.dll — $([math]::Round((Get-Item 'src-tauri\pdfium.dll').Length / 1MB, 2)) MB"
 
       # ── 8. Patch tauri.conf.json for Linux ─────────────────────────
-      # The checked-in config has macOS framework paths. On Linux we swap
-      # the resources section to bundle libpdfium.so instead.
+      # The checked-in config has macOS framework paths. On Linux we merge
+      # libpdfium.so into the resources section (keeping any existing
+      # entries, e.g. extractor.py) instead of overwriting it.
       - name: Patch tauri.conf.json for Linux
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -183,10 +184,35 @@ jobs:
           import json, pathlib
           conf = pathlib.Path("tauri.conf.json")
           c = json.loads(conf.read_text())
-          c["bundle"]["resources"] = {"libpdfium.so": "./"}
+          resources = c["bundle"].get("resources", [])
+          if isinstance(resources, list):
+              resources = {r: "./" for r in resources}
+          resources["libpdfium.so"] = "./"
+          c["bundle"]["resources"] = resources
           conf.write_text(json.dumps(c, indent=2))
           print("Patched tauri.conf.json resources for Linux")
           PY
+
+      # ── 8b. Patch tauri.conf.json for Windows ───────────────────────
+      # Same problem as Linux: pdfium.dll is downloaded next to Cargo.toml
+      # but was never added to bundle.resources, so the NSIS/MSI installer
+      # never shipped it — the PDF backend had nothing to load at runtime.
+      - name: Patch tauri.conf.json for Windows
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $confPath = "src-tauri\tauri.conf.json"
+          $c = Get-Content $confPath -Raw | ConvertFrom-Json
+          $resources = @{}
+          if ($c.bundle.resources -is [System.Array]) {
+            foreach ($r in $c.bundle.resources) { $resources[$r] = "./" }
+          } elseif ($c.bundle.resources) {
+            $c.bundle.resources.PSObject.Properties | ForEach-Object { $resources[$_.Name] = $_.Value }
+          }
+          $resources["pdfium.dll"] = "./"
+          $c.bundle.resources = $resources
+          $c | ConvertTo-Json -Depth 10 | Set-Content $confPath
+          Write-Host "Patched tauri.conf.json resources for Windows"
 
       # ── 9. Build Tauri app ─────────────────────────────────────────
       - name: Build Tauri app (${{ matrix.os-name }})
